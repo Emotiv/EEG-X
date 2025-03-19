@@ -1,4 +1,4 @@
-## EEG-X: A Universal Framework for Robust EEG Representation Learning
+## EEG-X: A Universal Framework for Robust EEG Representation Learning (Test)
 
 #### Authors: [Navid Mohammadi Foumani](https://scholar.google.com.au/citations?user=Ax62P1MAAAAJ&hl=en), 
 [**Mahsa Salehi**](https://research.monash.edu/en/persons/mahsa-salehi),
