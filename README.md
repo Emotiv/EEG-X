@@ -11,7 +11,7 @@
 This work follows from the project with [**Emotiv Research**](https://www.emotiv.com/neuroscience-research-education-solutions/), a bioinformatics research company based in Australia, and [**Emotiv**](https://www.emotiv.com/), 
 a global technology company specializing in the development and manufacturing of wearable EEG products.
 
-#### EEG-X Paper: [comming soon](https:)
+#### EEG-X Paper: [here](https://arxiv.org/abs/2511.08861)
 
 
 This is a PyTorch implementation of **EEG-X: A Universal Framework for Robust EEG Representation Learning**
