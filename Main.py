@@ -113,12 +113,11 @@ def set_seed(framework: str, seed: int) -> None:
 
 
 def run_training(config: Dict[str, Any]) -> Dict[str, Any]:
-    mode = config['Training_mode']
-
-    if mode == 'Linear_Prob':
-        return Linear_Prob(config)
-
     data = Data_Loader(config)
+
+    mode = config['Training_mode']
+    if mode == 'Linear_Prob':
+        return Linear_Prob(config, data)
     if mode == 'Supervise':
         return Supervise(config, data)
     if mode == 'Pretraining_finetuning':

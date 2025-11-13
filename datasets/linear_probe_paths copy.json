@@ -1,0 +1,14 @@
+{
+   "Linear_prob_model": "fm/EEG-X/Checkpoints/VortexAI_e128_717.ckpt",
+    "Linear_prob_config": "fm/EEG-X/Checkpoints/config.yaml",
+    "STEW_data_path": "/data/EEG-X/Processed/STEW/STEW.npy",
+    "Attention_data_path": "/data/EEG-X/Processed/Attention/Attention.npy",
+    "Crowdsourced_data_path": "/data/EEG-X/Processed/Crowdsourced/Crowdsourced.npy",
+    "DREAMER_data_path": "/data/EEG-X/Processed/DREAMER/DREAMER.npy",
+    "Alpha_data_path": "/data/EEG-X/Processed/Alpha/Alpha.npy",
+    "A_data_path": "/data/EEG-X/Processed/A/A.npy",
+    "C_data_path": "/data/EEG-X/Processed/C/C.npy",
+    "TUEVMultiClass_data_path": "/data/EEG-X/Processed/TUEV_Multi_Class/TUEV_Multi_Class.npy",
+    "TUEV_binary_data_path": "/data/EEG-X/Processed/TUEV/TUEV.npy",
+    "Crowdsourced_insight_data_path": "/data/EEG-X/Processed/Crowdsourced_insight/Crowdsourced_insight.npy"
+  }

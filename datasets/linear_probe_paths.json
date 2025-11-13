@@ -1,0 +1,5 @@
+{ "Linear_prob_model": "/home/navid/emotiv-ml/emotiv-ml/fm/EEG-X/Results/Pretraining/Quant_plus_pretrain_0.75_LoRA/2025-08-05_06-02/checkpoints/Quant_plus_pretrain_0.75_LoRA_best_loss_model.pth",
+    "Linear_prob_config": "/home/navid/emotiv-ml/emotiv-ml/fm/EEG-X/Results/LoRA_Fine_Tuning/Attention/2025-08-10_22-04/configuration.json",
+    "Attention_data_path": "/data/EEG-X/Processed/Attention/Attention.npy",
+    "AttentionEpoch_data_path": "/data/EEG-X/Processed/Attention_EpocMN8/Attention_EpocMN8.npy
+  }

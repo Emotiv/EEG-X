@@ -1,11 +1,11 @@
 ## EEG-X: A Universal Framework for Robust EEG Representation Learning 
 
 #### Authors: [Navid Mohammadi Foumani](https://scholar.google.com.au/citations?user=Ax62P1MAAAAJ&hl=en), 
-[**Mahsa Salehi**](https://research.monash.edu/en/persons/mahsa-salehi),
 [Soheila Ghane](https://www.linkedin.com/in/soheila-ghane/?originalSubdomain=au), 
 [Nam Nguyen](),
+[Mahsa Salehi](https://research.monash.edu/en/persons/mahsa-salehi),
 [Geoffrey I. Webb](https://scholar.google.com.au/citations?user=_1tpf8AAAAAJ&hl=en),
-[**Geoffrey Mackellar**](https://www.linkedin.com/in/geoffmackellar/?originalSubdomain=au), 
+[**Geoffrey Mackellar**](https://www.linkedin.com/in/geoffmackellar/?originalSubdomain=au) 
 
 
 This work follows from the project with [**Emotiv Research**](https://www.emotiv.com/neuroscience-research-education-solutions/), a bioinformatics research company based in Australia, and [**Emotiv**](https://www.emotiv.com/), 
@@ -16,7 +16,7 @@ a global technology company specializing in the development and manufacturing of
 
 This is a PyTorch implementation of **EEG-X: A Universal Framework for Robust EEG Representation Learning**
 <p align="center">
-    <img src="Figs/EEG-X.png">
+    <img src="Figs/EEG-X_model.png">
 </p> 
 
 ## Summary
