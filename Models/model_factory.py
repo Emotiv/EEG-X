@@ -1,6 +1,7 @@
 from Models.EEG_X import EEG_X
 from Models.EEG2Rep import EEG2Rep
 from Models.Biot import Biot_Pretrain as Biot
+from Models.MAEEG import MAEEG
 
 
 def model_factory(config):
@@ -10,6 +11,10 @@ def model_factory(config):
         model = EEG2Rep(config)
     elif config['Model'] == 'Biot':
         model = Biot(config)
+    elif config['Model'] == 'LaBraM':
+        model = Biot(config)
+    elif config['Model'] == 'MAEEG':
+        model = MAEEG(config)
     return model
 
 

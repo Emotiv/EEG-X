@@ -6,7 +6,6 @@ from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from Models import utils
 
-
 logger = logging.getLogger('__main__')
 
 NEG_METRICS = {'loss'}  # metrics for which "better" is less
@@ -17,30 +16,25 @@ def selfsupervised_pipeline(config, model, trainer, path):
     optimizer = config['optimizer']
     loss_module = config['loss_module']
     start_epoch = 0
-    best_value = 1e16
     total_start_time = time.time()
-    tensorboard_writer = SummaryWriter(log_dir=config['tensorboard_dir'])
+    tensorboard_writer = SummaryWriter('summary')
     metrics = []  # (for validation) list of lists: for each epoch, stores metrics like loss, ...
     save_best_model = utils.SaveBestModel()
-    best_loss_path = os.path.join(config['save_dir'],config['problem'] + '_best_loss_model.pth')
+
     Total_loss = []
     for epoch in tqdm(range(start_epoch + 1, epochs + 1), desc='Training Epoch', leave=False):
         aggr_metrics_train, model = trainer.train_epoch(epoch)  # dictionary of aggregate epoch metrics
         metrics_names, metrics_values = zip(*aggr_metrics_train.items())
         metrics.append(list(metrics_values))
-        Total_loss.append(aggr_metrics_train['Total_loss'])
+        Total_loss.append(aggr_metrics_train['loss'])
         print_str = 'Epoch {} Training Summary: '.format(epoch)
         for k, v in aggr_metrics_train.items():
-            tensorboard_writer.add_scalar('Loss/{}'.format(k), v, epoch)
+            tensorboard_writer.add_scalar('{}/train'.format(k), v, epoch)
             print_str += '{}: {:8f} | '.format(k, v)
         logger.info(print_str)
-        # Save model with lowest loss
-        if aggr_metrics_train['Total_loss'] < best_value:
-            best_value = aggr_metrics_train['Total_loss']
-            save_best_model(aggr_metrics_train['Total_loss'], epoch, model, optimizer, loss_module, best_loss_path) # save best model based on loss   
-    save_best_model(aggr_metrics_train['Total_loss'], epoch, model, optimizer, loss_module, path) # save last model
+        # plot_loss(Total_loss,Time_loss,Freq_loss)
+        save_best_model(aggr_metrics_train['loss'], epoch, model, optimizer, loss_module, path)
     total_runtime = time.time() - total_start_time
-    tensorboard_writer.close()
     logger.info("Train Time: {} hours, {} minutes, {} seconds\n".format(*utils.readable_time(total_runtime)))
     return
 

@@ -6,7 +6,6 @@ from torch import nn
 import torch.nn.functional as F
 from Models.Attention import *
 from Models.position_embedding import elec_location_Embedding, PositionalEmbedding
-from Models.Quant import Quant, Quant_plus
 
 class EEG_X(nn.Module):
     def __init__(self, config):
@@ -19,19 +18,26 @@ class EEG_X(nn.Module):
         channel_size, seq_len = config['Data_shape'][1], config['Data_shape'][2] 
         self.Layer_Norm = nn.LayerNorm(channel_size) # individual sample normalizing across channels 
         emb_size = config['emb_size']  # d_x
-        # Input Embedding Layer (Tokenization)-----------------------------------------------------------
-        if config['Input_Embedding'] == 'CNN':
-            self.InputEmbedding = Linear_Embedding(config)
-        elif config['Input_Embedding'] == 'FFT':
-            self.InputEmbedding = Linear_Embedding_freq(config)
-        elif config['Input_Embedding'] == 'Quant':
-            self.InputEmbedding = InputEmbedding_Quant(config)
-        # Position and Channel Encoding Layer ------------------------------------------------------------
+        # Embedding Layer -----------------------------------------------------------
+        # config['pooling_size'] = 2  # Max pooling size in input embedding
+        # seq_len = int(seq_len / config['pooling_size'])  # Number of patches (l)
+        # self.InputEmbedding = InputEmbedding(config)  # input (Batch,Channel, length) -> output (Batch, l, d_x)
+        # seq_len = int(seq_len / config['patch_size']) * channel_size  # Number of patches (l)
+        # self.InputEmbedding = InputEmbedding_e2rsd_freq(config)  # input (Batch,Channel, length) -> output (Batch, l, d_x)
+        # self.InputEmbedding = EEGPatchEmbedding(emb_size, config['patch_size'], 128)
+        # self.InputEmbedding = EEGSTFTProcessor(window_size=config['patch_size'], overlap=0.5)
+
+        # self.InputEmbedding = Linear_Embedding(config)
+
+        self.InputEmbedding = Linear_Embedding_freq(config)
+
         new_seq_len = int((seq_len - config['patch_size'])/(config['patch_size']/4)) + 1
         self.LocationEncoding = elec_location_Embedding(emb_size)
         self.PositionalEncoding = PositionalEmbedding(seq_len, emb_size)
+        
         # -------------------------------------------------------------------------
         self.momentum = config['momentum']
+        self.device = config['device']
         self.mask_ratio = config['mask_ratio']
         self.mask_len = int(config['mask_ratio'] * new_seq_len)
         self.mask_token = nn.Parameter(torch.randn(emb_size, ))
@@ -57,12 +63,10 @@ class EEG_X(nn.Module):
 
     def linear_prob(self, x):
         with (torch.no_grad()):
-            # make sure these tensors are on the same device
-            device = x.device
             patches = self.InputEmbedding(x)
             patches = self.Norm(patches)
-            patches = patches + self.LocationEncoding(patches).to(device)
-            patches = patches + self.PositionalEncoding(patches).to(device)
+            patches = patches + self.LocationEncoding(patches)
+            patches = patches + self.PositionalEncoding(patches)
             patches = self.Norm2(patches)
             patches = patches.reshape(patches.size(0), -1, patches.size(-1))  # B, Channel*patch_number, embedding_dim
             out = self.contex_encoder(patches)
@@ -71,17 +75,15 @@ class EEG_X(nn.Module):
             return out.squeeze()
 
     def pretrain_forward(self, x, x_c):
-        # make sure these tensors are on the same device
-        device = x.device
         patches = self.InputEmbedding(x)  # (Batch, l, d_x)
         patches = self.Norm(patches)
-        patches = patches + self.LocationEncoding(patches).to(device)
-        patches = patches + self.PositionalEncoding(patches).to(device)
+        patches = patches + self.LocationEncoding(patches)
+        patches = patches + self.PositionalEncoding(patches)
         patches = self.Norm2(patches)
 
         rep_mask_token = self.mask_token.repeat(patches.shape[0], patches.shape[1], patches.shape[2], 1)
-        rep_mask_token = rep_mask_token + self.LocationEncoding(rep_mask_token).to(device)
-        rep_mask_token = rep_mask_token + self.PositionalEncoding(rep_mask_token).to(device)
+        rep_mask_token = rep_mask_token + self.LocationEncoding(rep_mask_token)
+        rep_mask_token = rep_mask_token + self.PositionalEncoding(rep_mask_token)
 
         patches = patches.reshape(patches.size(0), -1, patches.size(-1))  # B, Channel*patch_number, embedding_dim
         rep_mask_token = rep_mask_token.reshape(rep_mask_token.size(0), -1, rep_mask_token.size(-1)) # B, Channel*patch_number, embedding_dim
@@ -107,26 +109,8 @@ class EEG_X(nn.Module):
         reconstruct = self.Decoder(decoder_input)
 
         X_c_Norm = self.Layer_Norm(x_c.permute(0, 2, 1)).permute(0, 2, 1)
-        reconstruct = self.Layer_Norm(reconstruct.permute(0, 2, 1)).permute(0, 2, 1)
         return [target_rep_mask, target_prediction, X_c_Norm, reconstruct]
 
-    # LoRA compatible forward function
-    def LoRA_forward(self, input_ids=None, attention_mask=None, labels=None, loss_fn=None, **kwargs):
-        x = input_ids
-        patches = self.InputEmbedding(x)
-        patches = self.Norm(patches)
-        patches = patches + self.LocationEncoding(patches)
-        patches = patches + self.PositionalEncoding(patches)
-        patches = self.Norm2(patches)
-        patches = patches.reshape(patches.size(0), -1, patches.size(-1))
-        out = self.contex_encoder(patches)
-        logits = self.predict_head(torch.mean(out, dim=1))
-
-        output = {"logits": logits}
-        if labels is not None:
-            loss = loss_fn(logits, labels)
-            output["loss"] = loss
-        return output
 
     def forward(self, x):
         patches = self.InputEmbedding(x)
@@ -136,9 +120,9 @@ class EEG_X(nn.Module):
         patches = self.Norm2(patches)
         patches = patches.reshape(patches.size(0), -1, patches.size(-1))  # B, Channel*patch_number, embedding_dim
         out = self.contex_encoder(patches)
-        logits = self.predict_head(torch.mean(out, dim=1))
-        return logits
-    
+        return self.predict_head(torch.mean(out, dim=1))
+
+
 class InputEmbedding(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -175,7 +159,7 @@ class Linear_Embedding(nn.Module):
     def __init__(self, config):
         super().__init__()
         patch_size=config['patch_size'] 
-        patch_stride = int(config['patch_size']/4)
+        patch_stride = int(config['patch_size']/2)
         embed_dim=config['emb_size']
 
         self.Norm = nn.BatchNorm1d(config['Data_shape'][1])
@@ -319,46 +303,8 @@ class Linear_Embedding_freq(nn.Module):
             channel_spec_emb = self.patch_embedding(channel_spec_emb)
             channel_emb = channel_spec_emb 
             emb_seq.append(channel_emb)
-        if len(emb_seq) == 0:
-            out = torch.zeros((x.shape[0], 1, x.shape[2], x.shape[2]), device=x.device)
-        else:    
-            out = torch.stack(emb_seq, dim=1)
+        out = torch.stack(emb_seq, dim=1)
         return out
-
-
-class InputEmbedding_Quant(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.patch_size = config['patch_size']
-        self.patch_stride = config['patch_stride']
-        # self.quant = Quant(depth=4, div=4)
-        # self.projection = nn.Linear(690, config['emb_size'])
-
-        self.quant = Quant_plus(depth=4, div=4)
-        self.projection = nn.Linear(557, config['emb_size']) # quant_plus
-        # self.projection = nn.Conv1d(in_channels=557, out_channels=config['emb_size'], kernel_size=1)
-        # self.projection = nn.Conv1d(in_channels=690, out_channels=config['emb_size'], kernel_size=1)
-
-    def forward(self, x):
-        # x: (batch, channel, length)
-        B, C, L = x.shape
-        # Step 1: Unfold to get patches => (B, C, NumPatches, PatchSize)
-        x = x.unfold(dimension=-1, size=self.patch_size, step=self.patch_stride)
-        B, C, N, P = x.shape  # Now: (128, 14, 5, 128)
-
-       # Step 2: Reshape to (B, C * N, P)
-        x = x.contiguous().view(B, C * N, P)  # shape: (B, C*N, P)
-
-        # Step 3: Apply quantization => output: (B, C*N, 557)
-        x = self.quant.fit_transform(x)
-
-        # Step 4: Project to embedding size => (B, C*N, emb_size)
-        x = self.projection(x)
-
-        # Optional: If needed, reshape back to (B, C, N, emb_size)
-        x = x.view(B, C, N, -1)
-
-        return x
 
 
 class PatchFrequencyEmbedding(nn.Module):
@@ -383,25 +329,6 @@ class Encoder(nn.Module):
         attn_heads = config['num_heads']
         d_ffn = config['dim_ff']
         layers = config['layers']
-        dropout = config['dropout']
-        enable_res_parameter = True
-        # TRMs
-        self.TRMs = nn.ModuleList(
-            [TransformerBlock(d_model, attn_heads, d_ffn, enable_res_parameter, dropout) for i in range(layers)])
-
-    def forward(self, x):
-        for TRM in self.TRMs:
-            x = TRM(x, mask=None)
-        return x
-
-
-class Decoder_transformer(nn.Module):
-    def __init__(self, config):
-        super(Decoder_transformer, self).__init__()
-        d_model = config['emb_size']
-        attn_heads = config['num_heads']
-        d_ffn = config['dim_ff']
-        layers = config['Decoder_layers']
         dropout = config['dropout']
         enable_res_parameter = True
         # TRMs
@@ -467,16 +394,14 @@ class Linear_Embedding_Decoder(nn.Module):
         self.patch_stride = config['patch_stride']
         embed_dim=config['emb_size']
         self.output_size = [config['Data_shape'][1], config['Data_shape'][2]]
-        self.Decoder = Decoder_transformer(config)
         # Transposed Conv2d to reverse the projection (Conv2d)
         self.deproj = nn.ConvTranspose2d(embed_dim, 1, kernel_size=(1, self.patch_size), stride=(1, self.patch_stride))
-        
+
     def forward(self, x):
         """
         x: B, T*C, embed_dim (Embedding output)
         Returns: B, C, T (Reconstructed raw series)
         """
-        x = self.Decoder(x)
         # Reshape the embeddings back into (B, embed_dim, C, num_patches)
         B, _, D = x.shape
         C, L = self.output_size

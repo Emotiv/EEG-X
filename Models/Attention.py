@@ -2,7 +2,6 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, List, Union
 # from einops import rearrange
 
 '''
@@ -163,25 +162,13 @@ class CrossAttnTRMBlock(nn.Module):
         self.skipconnect1 = SublayerConnection(d_model, enable_res_parameter, dropout)
         self.skipconnect2 = SublayerConnection(d_model, enable_res_parameter, dropout)
 
-    def compute_attention(self, rep_pair: List[torch.Tensor], mask: Optional[torch.Tensor] = None):
-        """Compute attention output for the pair of representations"""
-        rep_mask_token, rep_visible = rep_pair[1], rep_pair[0]
-        return self.attn(rep_mask_token, rep_visible, rep_visible, mask=mask)
-        
-    def compute_ffn(self, x):
-        """Apply feed-forward network to input"""
-        return self.ffn(x)
-
-    def forward(self, rep_visible, rep_mask_token, mask: Optional[torch.Tensor] = None):
+    def forward(self, rep_visible, rep_mask_token, mask=None):
+        # x = torch.cat((rep_visible, rep_mask_token), dim=1)
+        # x = self.skipconnect1(x, lambda _x: self.attn.forward(_x, _x, _x, mask=mask))
+        # x = x[:, rep_visible.shape[1]:, :]
         x = [rep_visible, rep_mask_token]
-        # Compute the attention output first
-        attn_output = self.compute_attention(x, mask=mask)
-        # Apply skip connection with pre-computed output
-        x = self.skipconnect1(x, attn_output)
-        # Compute FFN output
-        ffn_output = self.compute_ffn(x)
-        # Apply second skip connection
-        x = self.skipconnect2(x, ffn_output)
+        x = self.skipconnect1(x, lambda _x: self.attn.forward(_x[1], _x[0], _x[0], mask=mask))
+        x = self.skipconnect2(x, self.ffn)
         return x
 
 '''
@@ -200,84 +187,62 @@ class PositionalEmbedding(nn.Module):
 
 class Attention(nn.Module):
     """
-    Compute 'Scaled Dot Product Attention' (TorchScript compatible)
+    Compute 'Scaled Dot Product Attention
     """
-    def __init__(self, dropout=0.1):
-        super(Attention, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, 
-                mask: Optional[torch.Tensor] = None, apply_dropout: bool = False):
-        # Calculate attention scores with explicit scaling
-        d_k = query.size(-1)
-        scale = 1.0 / math.sqrt(float(d_k))
-        scores = torch.matmul(query, key.transpose(-2, -1)) * scale
+    def forward(self, query, key, value, mask=None, dropout=None):
+        scores = torch.matmul(query, key.transpose(-2, -1)) \
+                 / math.sqrt(query.size(-1))
 
-        # Handle mask with explicit condition checking to make it TorchScript friendly
         if mask is not None:
             scores = scores.masked_fill(mask == 0, -1e9)
 
         p_attn = F.softmax(scores, dim=-1)
 
-        # Apply dropout with explicit condition
-        if apply_dropout:
-            p_attn = self.dropout(p_attn)
-        
-        output = torch.matmul(p_attn, value)
-        return output, p_attn
+        if dropout is not None:
+            p_attn = dropout(p_attn)
+
+        return torch.matmul(p_attn, value), p_attn
 
 
 class MultiHeadAttention(nn.Module):
     """
-    Multi-head attention implementation (TorchScript compatible)
+    Take in model size and number of heads.
     """
 
-    def __init__(self, h: int, d_model: int, dropout: float = 0.1):
+    def __init__(self, h, d_model, dropout=0.1):
         super(MultiHeadAttention, self).__init__()
-        # Ensure d_model is divisible by h
-        if d_model % h != 0:
-            raise ValueError(f"d_model ({d_model}) must be divisible by h ({h})")
+        assert d_model % h == 0
 
         # We assume d_v always equals d_k
         self.d_k = d_model // h
         self.h = h
-        
-        # Define separate query, key, value projections for clarity
-        # self.linear_layers = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(3)])
-        # Huggingface LoRA compatible
-        self.q_proj = nn.Linear(d_model, d_model)
-        self.k_proj = nn.Linear(d_model, d_model)
-        self.v_proj = nn.Linear(d_model, d_model)
 
-
+        self.linear_layers = nn.ModuleList([nn.Linear(d_model, d_model) for _ in range(3)])
         self.output_linear = nn.Linear(d_model, d_model)
-        self.attention = Attention(dropout=dropout)
+        self.attention = Attention()
 
-    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, 
-                mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, query, key, value, mask=None):
         batch_size = query.size(0)
 
-        # 1) Project inputs to multi-head queries, keys, values
-        # query, key, value = [l(x).view(batch_size, -1, self.h, self.d_k).transpose(1, 2)
-        #     for l, x in zip(self.linear_layers, (query, key, value))]
-        query = self.q_proj(query).view(batch_size, -1, self.h, self.d_k).transpose(1, 2)
-        key = self.k_proj(key).view(batch_size, -1, self.h, self.d_k).transpose(1, 2)
-        value = self.v_proj(value).view(batch_size, -1, self.h, self.d_k).transpose(1, 2)
+        # 1) Do all the linear projections in batch from d_model => h x d_k
+        query, key, value = [l(x).view(batch_size, -1, self.h, self.d_k).transpose(1, 2)
+                             for l, x in zip(self.linear_layers, (query, key, value))]
 
+        # 2) Apply attention on all the projected vectors in batch.
+        x, attn = self.attention(query, key, value, mask=mask, dropout=self.dropout)
 
-        # 2) Apply attention on all the projected vectors in batch
-        attn_output, _ = self.attention(query, key, value, mask=mask, apply_dropout=True)
+        # 3) "Concat" using a view and apply a final linear.
+        x = x.transpose(1, 2).contiguous().view(batch_size, -1, self.h * self.d_k)
 
-        # 3) "Concat" using a view and apply a final linear
-        concat = attn_output.transpose(1, 2).contiguous().view(batch_size, -1, self.h * self.d_k)
-        
-        return self.output_linear(concat)
+        return self.output_linear(x)
 
 
 class SublayerConnection(nn.Module):
     """
     A residual connection followed by a layer norm.
-    TorchScript compatible version.
     """
 
     def __init__(self, size, enable_res_parameter, dropout=0.1):
@@ -285,54 +250,38 @@ class SublayerConnection(nn.Module):
         self.norm = nn.LayerNorm(size)
         self.dropout = nn.Dropout(dropout)
         self.enable = enable_res_parameter
-        self.a = nn.Parameter(torch.tensor(1e-8)) if enable_res_parameter else None
-    
-    # Separate implementations to avoid lambda functions and dynamic checks
-    def forward_with_list(self, x_list: List[torch.Tensor], sublayer_output):
-        """Process list input with pre-computed sublayer output"""
-        if self.enable:
-            return self.norm(x_list[1] + self.dropout(self.a * sublayer_output))
+        if enable_res_parameter:
+            self.a = nn.Parameter(torch.tensor(1e-8))
+
+    def forward(self, x, sublayer):
+        "Apply residual connection to any sublayer with the same size."
+        if type(x) == list:
+            return self.norm(x[1] + self.dropout(self.a * sublayer(x)))
+        if not self.enable:
+            return self.norm(x + self.dropout(sublayer(x)))
         else:
-            return self.norm(x_list[1] + self.dropout(sublayer_output))
-            
-    def forward_with_tensor(self, x, sublayer_output):
-        """Process tensor input with pre-computed sublayer output"""
-        if self.enable:
-            return self.norm(x + self.dropout(self.a * sublayer_output))
-        else:
-            return self.norm(x + self.dropout(sublayer_output))
-            
-    def forward(self, x: Union[torch.Tensor, List[torch.Tensor]], sublayer_output):
-        """Apply residual connection with pre-computed sublayer output"""
-        if isinstance(x, list):
-            return self.forward_with_list(x, sublayer_output)
-        else:
-            return self.forward_with_tensor(x, sublayer_output)
+            return self.norm(x + self.dropout(self.a * sublayer(x)))
 
 
 class PointWiseFeedForward(nn.Module):
     """
-    Feed-forward network (TorchScript compatible)
+    FFN implement
     """
 
-    def __init__(self, d_model: int, d_ffn: int, dropout: float = 0.1):
+    def __init__(self, d_model, d_ffn, dropout=0.1):
         super(PointWiseFeedForward, self).__init__()
         self.linear1 = nn.Linear(d_model, d_ffn)
         self.linear2 = nn.Linear(d_ffn, d_model)
         self.activation = nn.GELU()
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Apply operations in sequence for clarity
-        hidden = self.linear1(x)
-        activated = self.activation(hidden)
-        output = self.linear2(activated)
-        return self.dropout(output)
+    def forward(self, x):
+        return self.dropout(self.linear2(self.activation(self.linear1(x))))
 
 
 class TransformerBlock(nn.Module):
     """
-    TRM layer (TorchScript compatible version)
+    TRM layer
     """
 
     def __init__(self, d_model, attn_heads, d_ffn, enable_res_parameter, dropout=0.1):
@@ -342,21 +291,7 @@ class TransformerBlock(nn.Module):
         self.skipconnect1 = SublayerConnection(d_model, enable_res_parameter, dropout)
         self.skipconnect2 = SublayerConnection(d_model, enable_res_parameter, dropout)
 
-    def compute_attention(self, x, mask: Optional[torch.Tensor] = None):
-        """Compute self-attention output for input x"""
-        return self.attn(x, x, x, mask=mask)
-        
-    def compute_ffn(self, x):
-        """Apply feed-forward network to input"""
-        return self.ffn(x)
-
-    def forward(self, x, mask: Optional[torch.Tensor] = None):
-        # Compute attention output
-        attn_output = self.compute_attention(x, mask=mask)
-        # Apply first skip connection with pre-computed output
-        x = self.skipconnect1(x, attn_output)
-        # Compute FFN output
-        ffn_output = self.compute_ffn(x)
-        # Apply second skip connection
-        x = self.skipconnect2(x, ffn_output)
+    def forward(self, x, mask):
+        x = self.skipconnect1(x, lambda _x: self.attn.forward(_x, _x, _x, mask=mask))
+        x = self.skipconnect2(x, self.ffn)
         return x

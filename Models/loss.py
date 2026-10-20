@@ -26,30 +26,4 @@ class NoFussCrossEntropyLoss(nn.CrossEntropyLoss):
         return F.cross_entropy(inp, target.long(), weight=self.weight,
                                ignore_index=self.ignore_index, reduction=self.reduction)
 
-class NoFussCrossEntropyLoss_balanced(nn.CrossEntropyLoss):
-    """
-    A less fussy CrossEntropyLoss:
-    - Automatically handles Long (int64) targets
-    - Handles arbitrary-shaped inputs
-    - Supports optional class-balanced weighting
-    """
-
-    def __init__(self, weight=None, ignore_index=-100, reduction='mean'):
-        super().__init__(weight=weight, ignore_index=ignore_index, reduction=reduction)
-
-    def forward(self, inp, target):
-        # Apply class balancing if no weights are provided
-        if self.weight is None:
-            with torch.no_grad():
-                # Flatten target and compute class frequencies
-                target_flat = target.view(-1)
-                class_counts = torch.bincount(target_flat, minlength=inp.size(1)).float()
-                # Avoid division by zero
-                class_counts[class_counts == 0] = 1
-                class_weights = 1.0 / class_counts
-                class_weights = class_weights / class_weights.sum() * len(class_counts)
-                self.weight = class_weights.to(inp.device)
-
-        return F.cross_entropy(inp, target.long(), weight=self.weight,
-                               ignore_index=self.ignore_index, reduction=self.reduction)
 

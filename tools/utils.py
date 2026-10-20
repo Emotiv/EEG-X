@@ -4,10 +4,10 @@ import torch
 import numpy as np
 from torch.utils.data import Dataset
 from datetime import datetime
-import pickle
+# import mne
 import logging
+
 from datasets import data_loader
-import contextlib
 
 logging.basicConfig(format='%(asctime)s | %(levelname)s : %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,23 +26,20 @@ def Setup(args):
     output_dir = os.path.join(config['output_dir'], config['Training_mode'])
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
-    config['problem'] = os.path.basename(config['data_dir'])
-    output_dir = os.path.join(output_dir, config['problem'], initial_timestamp.strftime("%Y-%m-%d_%H-%M"))
+    # config['problem'] = config['data_dir'].split('/')[-1]
+    output_dir = os.path.join(output_dir, config['data_dir'], initial_timestamp.strftime("%Y-%m-%d_%H-%M"))
     config['output_dir'] = output_dir
     config['save_dir'] = os.path.join(output_dir, 'checkpoints')
     config['pred_dir'] = os.path.join(output_dir, 'predictions')
     config['tensorboard_dir'] = os.path.join(output_dir, 'tb_summaries')
+    create_dirs([config['save_dir'], config['pred_dir'], config['tensorboard_dir']])
+    config['problem'] = os.path.basename(config['data_dir'])
+    # Save configuration as a (pretty) json file
+    with open(os.path.join(output_dir, 'configuration.json'), 'w') as fp:
+        json.dump(config, fp, indent=4, sort_keys=True)
 
-    if not config['running_on_gcp']:
-        create_dirs([config['save_dir'], config['pred_dir'], config['tensorboard_dir']])
-        logger.info("Stored configuration file in '{}'".format(output_dir))
-        # Save configuration as a (pretty) json file
-        with open(os.path.join(output_dir, 'configuration.json'), 'w') as fp:
-            json.dump(config, fp, indent=4, sort_keys=True)
+    logger.info("Stored configuration file in '{}'".format(output_dir))
 
-    if config['Framework'] == 'Pytorch':
-        config['device'] = Initialization(config)
-        
     return config
 
 
@@ -68,211 +65,95 @@ def Initialization(config):
         torch.manual_seed(config['seed'])
     device = torch.device('cuda' if (torch.cuda.is_available() and config['gpu'] != '-1') else 'cpu')
     logger.info("Using device: {}".format(device))
-    if device.type == 'cuda':
-        torch.cuda.set_device(1)  # Set to GPU 1
+    if device == 'cuda':
         logger.info("Device index: {}".format(torch.cuda.current_device()))
     return device
 
 
 def Data_Loader(config):
-    if config['Framework'] == 'Pytorch':
-        if config['data_provider'] == 'corpus':
-            Data = data_loader.pretrain_corpus(config)
-            # Data = data_loader.load_corpus(config)
-        else:
-            if config['problem']=='TUEV':
-                Data = data_loader.load_TUEV(config)
-            elif config['problem']=='TUAB_old':
-                Data = data_loader.load_TUAB(config)
-            else:
-             Data = data_loader.load(config)
+    if config['problem']=='ICA_TUEV':
+        Data = data_loader.load_TUEV(config)
+    elif config['problem']=='ICA_BCICIV_2a':
+        Data = data_loader.load_BCICIV_2a(config)
+    elif config['problem']=='Crowdsourced':
+        Data = data_loader.load_crowdsourced(config)
     else:
-        Data = None
+        Data = data_loader.load(config)
     return Data
 
 
 class dataset_class(Dataset):
+
     def __init__(self, data, label, config, pretrain=False):
         super(dataset_class, self).__init__()
-        self.problem = config['problem']
-        if self.problem=='TUAB':
-            root_paths = data
-            if isinstance(root_paths, str):
-                root_paths = [root_paths]  # Convert single path to a list
-            self.files = []
-            for path in root_paths:
-                self.files.extend([os.path.join(path, f) for f in os.listdir(path)])
+
+        self.feature = data
+        if pretrain:
+            self.labels = torch.empty(len(data)) # no label
         else:
-            self.feature = data
-            if pretrain:
-                self.labels = torch.empty(len(data)) # no label
-            else:
-                self.labels = label.astype(np.int32)
-            # self.patch_size = config['patch_size']
+            self.labels = label.astype(np.int32)
+        self.patch_size = config['patch_size']
+        # self.__padding__()
+
+    def __padding__(self):
+        origin_len = self.feature[0].shape[1]
+        if origin_len % self.patch_size:
+            padding_len = self.patch_size - (origin_len % self.patch_size)
+            padding = np.zeros((len(self.feature), self.feature[0].shape[0], padding_len), dtype=np.float32)
+            self.feature = np.concatenate([self.feature, padding], axis=-1)
 
     def __getitem__(self, ind):
-        if self.problem =='TUAB':
-            sample = pickle.load(open(self.files[ind], "rb"))
-            X = sample["X"]
-            # X_clean = sample["X_Clean"]
-            label = sample["y"]
-            data = torch.FloatTensor(X)
-            # X_clean = torch.FloatTensor(X_clean)
+        x = self.feature[ind]
+        x = x.astype(np.float32)
+        # x = reshape_DD(x)
+        y = self.labels[ind]  # (num_labels,) array
 
-        else:
-            x = self.feature[ind]
-            x = x.astype(np.float32)
-            y = self.labels[ind]  # (num_labels,) array
-
-            data = torch.tensor(x)
-            label = torch.tensor(y)
+        data = torch.tensor(x)
+        label = torch.tensor(y)
 
         return data, label, ind
 
     def __len__(self):
-        if self.problem == 'TUAB':
-            lenght = len(self.files)
-        else:
-            lenght = len(self.labels)
-        return lenght
-
-
-class TUAB_Loader(torch.utils.data.Dataset):
-    def __init__(self, root_paths):
-        """
-        Initialize the dataset loader with one or more root paths.
-        
-        Args:
-            root_paths (list or str): A single path (str) or a list of paths (list of str).
-        """
-        if isinstance(root_paths, str):
-            root_paths = [root_paths]  # Convert single path to a list
-        self.files = []
-        for path in root_paths:
-            self.files.extend([os.path.join(path, f) for f in os.listdir(path)])
-    
-    def __len__(self):
-        return len(self.files)
-    
-    def __getitem__(self, index):
-        sample = pickle.load(open(self.files[index], "rb"))
-        X = sample["X"]
-        X_clean = sample["X_Clean"]
-        Y = sample["y"]
-        id = index
-        X = torch.FloatTensor(X)
-        X_clean = torch.FloatTensor(X_clean)
-        return X, Y, X_clean, id
+        return len(self.labels)
 
 
 class dataset_class_ICA(Dataset):
+
     def __init__(self, data, label, clean_data,  config, pretrain=False):
         super(dataset_class_ICA, self).__init__()
-        self.problem = config['problem']
-        if self.problem=='TUAB':
-            root_paths = data
-            if isinstance(root_paths, str):
-                root_paths = [root_paths]  # Convert single path to a list
-            self.files = []
-            for path in root_paths:
-                self.files.extend([os.path.join(path, f) for f in os.listdir(path)])
-        else:
-            self.feature = data
-            if pretrain:
-                self.labels = torch.empty(len(data)) # no label
-            else:
-                self.labels = label.astype(np.int32)
-            self.feature_clean = clean_data
 
-    def __getitem__(self, ind):
-
-        if self.problem =='TUAB':
-            sample = pickle.load(open(self.files[ind], "rb"))
-            X = sample["X"]
-            data_clean = sample["X_Clean"]
-            label = sample["y"]
-            data = torch.FloatTensor(X)
-            data_clean = torch.FloatTensor(data_clean)
-
-        else:
-            data_clean = []
-            x = self.feature[ind]
-            x = x.astype(np.float32)
-            y = self.labels[ind]  # (num_labels,) array
-            data = torch.tensor(x, dtype=torch.float32)
-            label = torch.tensor(y, dtype = torch.int32)
-            x_clean = self.feature_clean[ind]
-            x_clean = x_clean.astype(np.float32)
-            data_clean = torch.tensor(x_clean, dtype=torch.float32)
-        return data,label, data_clean, ind
-
-    def __len__(self):
-        if self.problem == 'TUAB':
-            lenght = len(self.files)
-        else:
-            lenght = len(self.labels)
-        return lenght
-
-'''
-# old data class
-class dataset_class_Corpus(Dataset):
-    def __init__(self, data, label, clean_data,  config, pretrain=False):
-        super(dataset_class_Corpus, self).__init__()
         self.feature = data
-        self.labels = torch.empty(len(data)) # no label
+        if pretrain:
+            self.labels = torch.empty(len(data)) # no label
+        else:
+            self.labels = label.astype(np.int32)
+        self.patch_size = config['patch_size']
         self.feature_clean = clean_data
+        # self.__padding__()
+
+    def __padding__(self):
+        origin_len = self.feature[0].shape[1]
+        if origin_len % self.patch_size:
+            padding_len = self.patch_size - (origin_len % self.patch_size)
+            padding = np.zeros((len(self.feature), self.feature[0].shape[0], padding_len), dtype=np.float32)
+            self.feature = np.concatenate([self.feature, padding], axis=-1)
+            self.feature_clean = np.concatenate([self.feature_clean, padding], axis=-1)
 
     def __getitem__(self, ind):
         data_clean = []
-        x = self.feature[ind].squeeze()
+        x = self.feature[ind]
         x = x.astype(np.float32)
         y = self.labels[ind]  # (num_labels,) array
         data = torch.tensor(x, dtype=torch.float32)
-        label = y.clone().detach().to(torch.int32)
-        x_clean = self.feature_clean[ind].squeeze()
+        label = torch.tensor(y, dtype = torch.int32)
+        x_clean = self.feature_clean[ind]
         x_clean = x_clean.astype(np.float32)
         data_clean = torch.tensor(x_clean, dtype=torch.float32)
         return data,label, data_clean, ind
 
 
     def __len__(self):
-        lenght = len(self.labels)
-        return lenght
-'''
-class dataset_class_Corpus(Dataset):
-    def __init__(self, data, label, clean_data,  config, pretrain=False):
-        super(dataset_class_Corpus, self).__init__()
-        self.feature = data
-        self.feature_clean = clean_data
-        self.labels = torch.empty(len(data)) # no label
-        # self.pc = pickle.load(open(f'/home/navid/emotiv-ml/axon/pickle/prep_c_{2}_{0.75}_{9}.pickle', 'rb'))
-
-
-    def __getitem__(self, ind):
-        data_clean = []
-        x = self.feature[ind].squeeze()
-        x = x.astype(np.float32)
-        y = self.labels[ind]  # (num_labels,) array
-        data = torch.tensor(x, dtype=torch.float32)
-        label = y.clone().detach().to(torch.int32)
-        '''
-        padded_x = np.pad(x, ((0, 0), (0, 1)), mode='constant')
-        x_clean = self.pc.clean(padded_x.T).transpose()
-        data_clean = x_clean.astype(np.float32)
-        '''
-        x_clean = self.feature_clean[ind].squeeze()
-        x_clean = x_clean.astype(np.float32)
-        data_clean = torch.tensor(x_clean, dtype=torch.float32)
-        
-
-        return data,label, data_clean, ind
-
-
-    def __len__(self):
-        lenght = len(self.labels)
-        return lenght
-
-
+        return len(self.labels)
 
 
 def reshape_DD(data):
@@ -329,5 +210,7 @@ def get_fft(train_data):
                 k = k + 1
 
     return F_train
+
+
 
 
