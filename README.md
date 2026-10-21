@@ -32,3 +32,13 @@ or you can set the parameters:
 
 
 ### Test 2
+
+## Reproducible paper rerun
+
+The [rerun specification](docs/spec.md) records the agreed model configuration,
+non-rASR data requirements, subject-wise splits, validation selection, and
+reporting protocol. The [readiness review](docs/training-review.md) separates
+current implementation behavior from the required changes.
+
+This documentation change prepares the EEG-X paper rerun. Adapt the current
+EEG-X implementation with minimal changes before running the new experiments.
