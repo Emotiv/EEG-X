@@ -1,0 +1,36 @@
+{
+  "source": "Emotiv/emotiv-ml:STEEGFormer",
+  "revision": "abfe56141125f634c4efe1e82a15b4f3d59e298c",
+  "files": [
+    {
+      "path": "pretrain/optimizers/stable_adamw.py",
+      "source_sha256": "486342669b4d7d528d38d2aa4c84b312e14b9b60d73ea31dfc2439f0ce86035c",
+      "upstream_path": "Reve/src/utils/stable_adamw.py"
+    },
+    {
+      "path": "pretrain/channel_identity.py",
+      "source_sha256": "3a44c1971f720c4c32d54223eec80a90433f2a06e459df75ee2f2a6a94445272"
+    },
+    {
+      "path": "pretrain/normalization.py",
+      "source_sha256": "75e2f70de3b984038b29cf42e900b177cde530c1e8916c06b8d0ed4e462ac86d"
+    },
+    {
+      "path": "pretrain/optim.py",
+      "source_sha256": "2587d615e87229b8a93f1dfcca312efdb69239b30b052a60dde1a04a63c4fa4d"
+    },
+    {
+      "path": "pretrain/optimizer_factory.py",
+      "source_sha256": "094d2b678a6de3caa7acb1da74a3ec533b003975cfd4a3aa5d03ac175ce27e36"
+    },
+    {
+      "path": "pretrain/metadata.py",
+      "source_sha256": "33cd6ea483c45717773845b48e8fb1cffe663566eabc2702811f58c196ff2264",
+      "upstream_path": "pretrain/prepare_offline_dataset/scaling/contracts.py"
+    },
+    {
+      "path": "pretrain/senloc_file/senloc.json",
+      "source_sha256": "197bfe781f5a651d08bc7035cb4f456b46c42e881b6295586ef2d3d39c9058a9"
+    }
+  ]
+}
