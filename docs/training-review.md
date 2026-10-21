@@ -1,38 +1,41 @@
 # EEG-X paper-run readiness
 
-This change documents the rerun contract. Model and training changes must be built on the current EEG-X implementation and reviewed before experiments begin.
+The selected defaults are implemented. The local pipeline still needs source verification.
+Engineering checks do not establish paper scores. The [task log](task.md)
+records selected manuscript differences and local changes.
 
-| Area | Current main behavior or available evidence | Required work |
-|---|---|---|
-| Tokenizer | STFT magnitude input | Add aligned raw waveform features and freeze the fusion and mask boundaries |
-| Encoder | Configurable depth, width, and heads | Set the agreed primary configuration, then add scaling configurations |
-| Decoder | Predictor feeds reconstruction through a transposed-convolution head | Resolve how the agreed Transformer decoder fits the active reconstruction path |
-| Normalization and attention | LayerNorm and manual attention | Apply agreed RMSNorm changes and verify supported FlashAttention |
-| Reconstruction loss | Straight-through DiCT feature MSE only; signed root can block gradients at zero | Add agreed raw MSE and Soft Hydra; verify gradients and numerical stability |
-| Teacher | Teacher targets are computed but do not enter the current loss | Resolve unused teacher work without removing the active Predictor path by accident |
-| Data | Processed release exists; local label and ownership audits are available | Verify non-rASR history, participant IDs, labels, units, channel order, and duplicates |
-| Splits and selection | Existing experimental partitions cannot supply the new split bank | Pool subjects, persist each seed's splits, and enforce validation-only selection |
-| Training and evaluation | Current experiment code needs rerun-specific checks | Add early stopping, complete fine-tuning and frozen evaluation, resume, and saved results |
-
-Current main is the implementation base. Configuration changes alone do not resolve its tokenizer, decoder, and loss differences from the agreed table.
-
-| Dataset | Evidence or remaining issue |
+| Check | Result |
 |---|---|
-| DREAMER arousal | Local arousal rule verified; select the correct task artifact and verify participant mapping |
-| STEW | Processed data exists; native folder access and original rating verification remain blocked |
-| TUAB | Native normal/abnormal labels and participant ownership verified; new subject splits pending |
-| TUEV binary | Native binary event map verified; processed correspondence and duplicate policy need review |
-| Crowdsourced | Author recording ownership and markers verified; preserve owners across acquisition blocks |
-| BCICIV-2a and Kalunga | Classes and channel mappings checked locally; verify processed correspondence before frozen evaluation |
+| Local integration | EEG-X reconstruction and evaluation paths connected |
+| Reproducibility | Interrupted CPU training resumes with identical weights, progress and random state |
+| Configuration records | Resolved optimizer, scheduler, clipping, classifier settings, and Git provenance are saved |
+| Real EEG check | Selected defaults passed pretraining, fine-tuning, frozen evaluation, and encoder export/reload on a small DREAMER subset |
+| Model checks | Token masking, spectral isolation, gradient flow and checkpoint round trips passed |
+| Interrupted diagnostics | Resume completes pending curves and preserves prior completed curves |
+| Selection | Validation selects checkpoints; final test predictions follow saved selection locks |
+| Results evidence | Tables check predictions, subject membership, selected artifacts and metric calculations |
+| Review | User-selected defaults implemented; manuscript differences remain explicitly documented |
+| Spatial port | Fixed XYZ buffers and contracts exactly match retained EEG-X2 scaling across selected widths |
+| Source readiness | Selected non-rASR source/target provenance and STEW rating evidence remain unresolved |
 
-These checks are preparation evidence, not regenerated paper results. No training implementation or new experiment results are included in this change.
+The available signals can test execution. Verify source/target history before generating paper results. The [manuscript review](paper-review.md) records deliberate differences.
 
-| Execution constraint | Value |
-|---|---|
-| Primary model | Encoder depth 8, embedding width 64, attention heads 8 |
-| Shared GPU cap | 72 GPU-hours |
-| Previously charged local usage | Approximately 2.52 GPU-hours |
-| Device | Physical GPU 1 |
-| Storage | Work volume for environments, data, caches, and outputs |
+| Study or check | Measured state |
+|---|---:|
+| Real-EEG CPU check: subjects | 10 |
+| Real-EEG CPU check: windows | 20 |
+| Real-EEG CPU check: pretraining epochs | 1 |
+| CPU test suite: passed | 131 |
+| CUDA tests skipped in CPU suite | 3 |
+| Planned experiments | 330 |
+| Experiments blocked by source requirements | 330 |
+| Completed paper seed groups | 0 |
+| Shared GPU time already charged, hours | 2.5292 |
+| Shared GPU cap, hours | 72 |
+| Approved physical GPU | 1 |
 
-Carry existing GPU usage forward. Review the implementation, fix findings, and verify the real-data pipeline before full training.
+Earlier bounded GPU checks predate the selected position and objective defaults.
+The [performance check](pipeline-performance.md) records that earlier throughput.
+The existing budget ledger remains intact.
+
+Only completed measured seed groups can supply revised paper values. The generated CSV and LaTeX tables remain empty until those groups complete.

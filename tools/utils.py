@@ -7,7 +7,7 @@ from datetime import datetime
 # import mne
 import logging
 
-from datasets import data_loader
+from pretrain.datasets import loader as data_loader
 
 logging.basicConfig(format='%(asctime)s | %(levelname)s : %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)

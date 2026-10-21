@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+.uv-cache/
+.runs/
+*.pth
+*.pt
+wandb/
+1861_EEG_X_Toward_Device_Agnos.pdf
