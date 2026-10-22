@@ -38,6 +38,17 @@ def profile():
     }
 
 
+def processed_profile():
+    """Describe processed release values preserved without signal transforms."""
+    return {
+        "name": "processed_release_as_is_v1",
+        "sample_rate": 128,
+        "output_dtype": "float32",
+        "local_operations": ["cast_float32"],
+        "upstream_history": "not_verified",
+    }
+
+
 def preprocess(volts, sample_rate, channels):
     """Filter a complete recording, then standardize; input units are volts."""
     signal = np.asarray(volts, dtype=np.float64)

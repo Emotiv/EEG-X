@@ -68,7 +68,7 @@ def test_processed_release_keeps_values_and_freezes_source_evidence(tmp_path):
 
 def test_preparation_publishes_only_the_complete_manifest(tmp_path, monkeypatch):
     from pretrain.pipeline import processed
-    from pretrain.pipeline.splits import require_paper_source
+    from pretrain.pipeline.splits import validate_prepared_input
 
     path, _, _, _ = release_contract(tmp_path)
     prepared = tmp_path / "prepared"
@@ -82,4 +82,27 @@ def test_preparation_publishes_only_the_complete_manifest(tmp_path, monkeypatch)
     monkeypatch.setattr(processed, "attach_source_evidence", observe_during_preparation)
     prepare(path, prepared)
     assert observed == [False]
-    require_paper_source(Windows(prepared / "manifest.json", "train").metadata)
+    validate_prepared_input(Windows(prepared / "manifest.json", "train").metadata)
+
+
+def test_processed_release_can_preserve_values_without_upstream_history(tmp_path):
+    from pretrain.pipeline.preprocessing import processed_profile
+
+    path, values, _, contract = release_contract(tmp_path)
+    artifact = tmp_path / contract["artifact"]
+    values = (values * 100).astype("float64")
+    np.save(
+        artifact, {"X": values, "Y": np.tile([0, 1, 0, 1], 10), "ID": np.repeat(np.arange(10), 4)}
+    )
+    contract["artifact_sha256"] = sha256_file(artifact)
+    contract["preprocessing"] = processed_profile()
+    contract.pop("source_evidence")
+    contract.pop("preprocessing_evidence")
+    path.write_text(json.dumps(contract))
+    output = tmp_path / "as-provided"
+    metadata = prepare(path, output)
+    np.testing.assert_array_equal(
+        np.load(output / "record-000000.npy"), values[0].astype("float32")
+    )
+    assert metadata["preprocessing"]["upstream_history"] == "not_verified"
+    assert "non_rasr_evidence" not in metadata

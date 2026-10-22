@@ -8,7 +8,7 @@
 
 **Channel identity**: A stable physical electrode identity and explicit channel order. A channel count alone does not establish the montage.
 
-**Non-rASR source**: The user selected no rASR in either inputs or targets. Reconstruct the same processed signal supplied as input. This differs from the manuscript's rASR-cleaned target setup. Preserve attributable upstream processing evidence and audit available signals. Do not describe this policy as a manuscript requirement or bypass source verification.
+**Processed source policy**: The user explicitly waived proof of upstream non-rASR history. Accept the selected processed data and reconstruct the same X arrays supplied as input; add no local rASR or extra filtering/normalization. Record unknown upstream processing as unknown, rather than claiming it was verified. Preserve artifact hashes, stored labels, subject IDs and explicit physical channel order. STEW uses /data/EEG-X/Processed/STEW/STEW.npy with its saved binary labels and subject IDs; original ratings need not be re-derived for this selected release.
 
 **Seed split**: A persisted subject-wise train/validation/test assignment after pooling the old partitions. Reuse each seed's assignment across model configurations. Subjects and unresolved duplicate groups must not cross partitions.
 
@@ -26,7 +26,7 @@
 
 **GPU performance check**: The user selected physical GPU zero for the current bounded training checks and approved sharing it with existing workloads. Shared checks have an explicit allocator limit, retain the existing budget, and record contention. Their timings cannot establish a code speedup. Paper studies keep their planned device.
 
-**Implementation status**: The local revised pipeline reuses the EEG-X context encoder and active Predictor. Model definitions live in pretrain/models; the single training and evaluation pipeline lives in pretrain/pipeline. StableAdamW lives in pretrain/optimizers. CPU checks establish engineering behavior only. Paper scores require aligned and verified source/target processing, independent seed splits, locked selections, and completed measured runs.
+**Implementation status**: The local revised pipeline reuses the EEG-X context encoder and active Predictor. Model definitions live in pretrain/models; the single training and evaluation pipeline lives in pretrain/pipeline. StableAdamW lives in pretrain/optimizers. CPU checks establish engineering behavior only. Paper scores require recorded inputs and targets, independent seed splits, locked selections, and completed measured runs.
 
 **Ported optimizations**: Shared RMSNorm, compute policy, optimizer, batching, and checkpoint behavior belong to EEG-X. The separate raw EEGX2 backbones and corpus runners are retained in Git history. The channel vocabulary keeps its original physical identities and fingerprint.
 
@@ -38,7 +38,7 @@
 
 **Model defaults**: Train EEG-X with depth 8, width 64 and eight attention heads. YAML selects one explicit model configuration. Keep RMSNorm, Q/K normalization, FlashAttention, deterministic MAE-style masking, the hybrid tokenizer, and the active trainable Predictor without teacher/EMA. Training remains the selected pretraining/fine-tuning recipe. Receipts record resolved settings and Git provenance. Final evaluation cannot overwrite the matching training model and optimizer snapshot.
 
-**Dataset publication**: Publish a prepared manifest only after source evidence and release metadata are finalized. Missing evidence raises an input error. No persistent task state blocks a later retry.
+**Dataset publication**: Publish a prepared manifest only after label/subject checks and release metadata are finalized. Upstream rASR history is optional. The as-provided processed-release profile records float32 casting as its only local operation; do not claim the raw preprocessing profile was applied to these values. No persistent task state blocks a later retry.
 
 **EEG-X2 spatial default**: Fixed normalized XYZ sin/cos features use base five, the frozen vocabulary center/radius, feature normalization, and width padding. The port matches retained EEG-X2 scaling buffers and contracts exactly across selected widths. Use fresh training outputs while preserving the shared budget ledger.
 

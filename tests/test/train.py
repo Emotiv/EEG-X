@@ -157,7 +157,7 @@ def test_main_script_logs_real_offline_wandb_metrics_and_evaluates(tmp_path):
     assert not (tmp_path / "wrong-seed").exists()
 
 
-def test_yaml_command_reports_missing_source_evidence_without_saving_blocked_state(tmp_path):
+def test_yaml_command_accepts_data_without_upstream_rasr_evidence(tmp_path):
     from pretrain.metadata import atomic_json, fingerprint
 
     manifest = prepared_fixture(tmp_path / "data")
@@ -174,13 +174,22 @@ def test_yaml_command_reports_missing_source_evidence_without_saving_blocked_sta
                 "output": "run",
                 "device": "cpu",
                 "precision": "fp32",
+                "epochs": 1,
+                "warmup_epochs": 0,
+                "depth": 1,
+                "width": 16,
+                "workers": 0,
+                "objective": None,
+                "probe_interval": 0,
+                "optimizer": {"weight_decay": 0.0},
             }
         )
     )
     completed = invoke(config, ROOT)
-    assert completed.returncode != 0
-    assert "non-rASR source history" in completed.stderr
-    assert not (tmp_path / "run").exists()
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert (tmp_path / "run/training/best.pth").exists()
+    saved = json.loads((tmp_path / "run/split/manifest.json").read_text())
+    assert "non_rasr_evidence" not in saved
     assert not list(tmp_path.rglob("status.json"))
 
 

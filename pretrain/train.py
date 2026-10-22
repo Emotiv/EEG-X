@@ -118,12 +118,12 @@ def run_config(path):
 
     from pretrain.pipeline.budget import Budget, NoGpuBudget
     from pretrain.pipeline.data import Windows
-    from pretrain.pipeline.splits import require_paper_source, split_manifest
+    from pretrain.pipeline.splits import validate_prepared_input, split_manifest
     from pretrain.pipeline.training import resolve_training_config, run
     from pretrain.tracking import track
 
     source = Windows(settings["manifest"], "train")
-    require_paper_source(source.metadata)
+    validate_prepared_input(source.metadata)
     stage = settings["stage"]
     defaults = (
         {

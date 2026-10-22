@@ -7,7 +7,7 @@ from pathlib import Path
 from pretrain.channel_identity import sha256_file
 from pretrain.pipeline.artifacts import inspect_artifact
 from pretrain.pipeline.data import PreparedWriter, TASK_WINDOWS
-from pretrain.pipeline.preprocessing import profile
+from pretrain.pipeline.preprocessing import processed_profile, profile
 from pretrain.pipeline.splits import attach_source_evidence
 
 
@@ -20,11 +20,13 @@ def prepare(contract_path, output):
     path = Path(contract_path).resolve()
     settings = json.loads(path.read_text())
     samples = TASK_WINDOWS[settings["task"]]
-    for name in ("label_evidence", "subject_evidence", "preprocessing_evidence"):
+    for name in ("label_evidence", "subject_evidence"):
         if settings[name].get("status") != "verified" or not settings[name].get("authority"):
             raise ValueError(f"Verified attributable {name} is required")
-    required = profile()
     actual = settings["preprocessing"]
+    required = (
+        processed_profile() if actual.get("name") == processed_profile()["name"] else profile()
+    )
     for key, value in required.items():
         if key != "name" and actual.get(key) != value:
             raise ValueError(f"Processed release preprocessing is incompatible: {key}")
@@ -80,15 +82,23 @@ def prepare(contract_path, output):
 
     def finalize(metadata):
         metadata["subject_evidence"] = settings["subject_evidence"]
-        metadata["preprocessing_evidence"] = settings["preprocessing_evidence"]
+        metadata["preprocessing_evidence"] = settings.get(
+            "preprocessing_evidence",
+            {
+                "status": "not_verified",
+                "scope": "user-selected processed release; values preserved",
+            },
+        )
         metadata["release_contract_sha256"] = sha256_file(path)
         metadata["release_counts"] = {
             "input_windows": len(writer.events),
             "retained_windows": sum(metadata["counts"].values()),
             "excluded_entries": len(metadata["excluded"]),
         }
-        evidence = (path.parent / settings["source_evidence"]).resolve()
-        return attach_source_evidence(metadata, evidence)
+        if settings.get("source_evidence"):
+            evidence = (path.parent / settings["source_evidence"]).resolve()
+            return attach_source_evidence(metadata, evidence)
+        return metadata
 
     return writer.finish(finalize=finalize)
 

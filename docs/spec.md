@@ -30,14 +30,14 @@ Use the current EEG-X model as the implementation base. Keep its active reconstr
 
 ## Data and subject splits
 
-Start from the processed EEG-X release on Axon. Audit participant IDs, labels, channels, units, preprocessing, and duplicate samples before reuse. Never filter or normalize an already processed input again without proven need.
+Use the user-selected processed EEG-X release. Check stored participant IDs, labels, physical channel order, array layout and duplicates. Preserve processed values; do not filter or normalize them again. An as-provided import may cast to float32 and records upstream processing as unverified.
 
-Use non-rASR inputs and targets, as selected by the user. Reconstruct the same processed signal supplied as input. This is an explicit difference from the manuscript's rASR-cleaned target method. Verify and record upstream processing; a local `rasr=False` setting alone does not prove that rASR was absent. Unknown or incompatible source history blocks reuse until verified or rebuilt from a documented non-rASR source.
+The user waived proof of upstream non-rASR history. Reconstruct the same processed X arrays supplied as input and add no local rASR. Preserve existing history when available; unknown upstream history does not block training and must not be reported as verified. This differs from the manuscript's rASR-cleaned target method.
 
 | Task | Role | Window | Label contract |
 |---|---|---:|---|
 | DREAMER arousal | Separate pretraining and in-domain fine-tuning | 2 s | High if rating >3, otherwise low; this is the verified local experiment rule, not a documented paper threshold |
-| STEW workload | Separate pretraining and in-domain fine-tuning | 2 s | High if rating >4, otherwise low; verify original ratings and participant IDs before use |
+| STEW workload | Separate pretraining and in-domain fine-tuning | 2 s | Use the binary labels and participant IDs stored in the selected STEW.npy; original rating conversion is not re-derived |
 | TUAB | Separate pretraining, in-domain fine-tuning, and transfer source | 10 s | Official normal/abnormal labels |
 | TUEV binary | Separate pretraining and in-domain fine-tuning | 2 s | Native classes 1/2/3 positive, 6 negative; exclude 4/5; verify correspondence to the processed release |
 | Crowdsourced | Frozen cross-domain evaluation from TUAB | 2 s | Eyes closed/open; retain author-backed recording ownership |
@@ -57,14 +57,14 @@ New pretraining checkpoints record the source task, release hash and subject-spl
 | Pairing | Reuse each seed's split across every architecture and objective comparison |
 | Old official partitions | Pool TUAB/TUEV subjects too; preserving the old official test split is superseded by Navid's new split request |
 | Integrity | Subjects and unresolved duplicate groups must not cross partitions; every evaluated class must be present |
-| Preprocessing | Target 128 Hz, average reference, 60 Hz notch where supported, 0.5-45 Hz FIR bandpass, recording/channel z-score, clip to ±15, float32; verify source units and physical channel order |
-| Artifact-removal policy | Non-rASR inputs only; no local rASR; preserve evidence of upstream processing in each prepared manifest |
-| Incompatible processed inputs | Rebuild from native data only with traceable participant mapping and a documented preprocessing decision |
+| Preprocessing | Native preparation uses the recorded raw preprocessing profile. Selected processed releases preserve values and physical channel order; float32 casting only, with upstream history recorded as unverified |
+| Artifact-removal policy | Add no local rASR; upstream non-rASR proof is optional |
+| Processed inputs | Use stored signals, labels and participant IDs from the selected artifact; reject incompatible shape, missing subjects, invalid labels or changed artifact hashes |
 | Duplicate policy | Reconcile duplicates and retained counts with the processed release before freezing exclusions; document exclusions before freezing the new datasets |
 
 New split manifests must be immutable and versioned. Missing participant or label evidence blocks the affected task.
 
-Publish prepared manifests only after all source-specific evidence and metadata are finalized. Missing source evidence raises an input error. Retry after supplying the evidence; no persistent task state is created.
+Publish prepared manifests only after label/subject checks and release metadata are finalized. Upstream non-rASR history is optional. No persistent task state is created.
 
 ## Target model flow
 
@@ -86,7 +86,7 @@ flowchart TD
     ENC -->|Pretraining| RESTORE["Reconstruct masked representations; restore patch order"]
     RESTORE --> DEC["Add decoder positions; Transformer decoder"]
     DEC --> PRED["Predict raw waveform patches"]
-    TARGET["Same processed non-rASR EEG target"] --> LOSS["Masked raw MSE + Soft DiCT feature MSE"]
+    TARGET["Same processed EEG target"] --> LOSS["Masked raw MSE + Soft DiCT feature MSE"]
     PRED --> LOSS
     ENC -->|Evaluation| POOL["Mean patch features"]
     POOL --> IN["In-domain: tune tokenizer + encoder + classifier"]
@@ -160,7 +160,7 @@ These counts describe paper scope, not a scheduled job matrix or completed resul
 
 ## Work required before paper runs
 
-- [ ] Audit the processed release, recover true participant IDs, verify labels, preprocessing, and non-rASR source history, and reconcile duplicate counts.
+- [ ] Record the selected processed release, stored participant IDs and labels, and reconcile duplicate counts; upstream non-rASR proof is waived.
 - [ ] Generate and save the independent split bank; test subject separation and class coverage.
 - [x] Resolve teacher/latent scope; implement the hybrid tokenizer, primary model, and actual attention-backend reporting.
 - [x] Add early stopping, the revised fine-tuning horizon, classifier-only cross-domain evaluation, and diagnostic probe logging.
@@ -183,4 +183,4 @@ Implementation and checks must live in this repository. Keep failed and incomple
 | Code-speed comparison | Fix logical and physical batch sizes; use one physical batch per update without gradient accumulation; hold data order, precision, hardware, warmup, and measured update count fixed. Treat larger microbatches as separate capacity tuning |
 | Publication | Replace EEG-X table entries only with measured revised-run results; mark old-split baselines as historical until rerun |
 
-The implementation remains local. Completed experiments supply verified per-seed predictions and W&B metrics. Aggregation happens in W&B. Missing source evidence and unavailable GPU capacity remain explicit; pilot and synthetic checks cannot supply paper scores.
+The implementation remains local. Completed experiments supply verified per-seed predictions and W&B metrics. Aggregation happens in W&B. Unknown source history and unavailable GPU capacity remain explicit; pilot and synthetic checks cannot supply paper scores.

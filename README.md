@@ -58,8 +58,7 @@ The historical baseline models and training loops remain in Git history.
 | Repeats | 5 pooled subject splits, 70/10/20 train/validation/test |
 
 These are the user-selected defaults. RMSNorm, Q/K normalization, FlashAttention,
-and the trainable Predictor are retained; teacher and EMA are absent. Non-rASR
-processing applies to both input and target. The [task log](docs/task.md) records
+and the trainable Predictor are retained; teacher and EMA are absent. The same processed X arrays supply input and target; no local rASR is added. The [task log](docs/task.md) records
 the deliberate manuscript differences and training settings.
 
 Omitting encoder depth and width selects the primary encoder; omitting the objective selects
@@ -99,12 +98,12 @@ or resume paths must contain `{seed}` so each run loads its matching checkpoint.
 
 `device: cuda:1` selects physical GPU 1 and preserves the existing shared budget.
 For a CPU check, use `device: cpu` and `precision: fp32`. Inputs use the prepared
-manifest described below, with physical channel IDs and verified source history.
+manifest described below, with physical channel IDs, stored labels and subject IDs. Upstream non-rASR proof is not required.
 
 ## Reproducible paper rerun
 
 The [rerun specification](docs/spec.md) records the selected configuration,
-non-rASR data requirements, subject splits, validation selection and reporting.
+processed input contracts, subject splits, validation selection and reporting.
 The [task log](docs/task.md) distinguishes author requirements and selected local choices.
 The [readiness review](docs/training-review.md) records measured readiness.
 
@@ -117,7 +116,7 @@ uv run --locked --no-active python -m pretrain.pipeline.processed \
 
 The contract identifies the artifact and hash, explicit NCT or NTC layout,
 physical channel order, signal/label/participant fields for each old partition,
-verified label mapping, and attributable subject and preprocessing evidence.
+stored label mapping, participant IDs and declared processing history.
 See [the contract guide](docs/reproduction.md). Native adapters remain available
 through `python -m pretrain.pipeline.prepare --help`.
 
@@ -171,3 +170,16 @@ evaluation logs a confusion matrix and preserves predictions locally.
 Online resume reuses the saved W&B run ID in `wandb.json`. Keep project and group
 unchanged. W&B performs grouping and aggregation; this repository has no study
 plan, controller, task registry or seed-summary job.
+
+## Selected STEW release
+
+`configs/stew.yaml` uses the prepared copy of `/data/EEG-X/Processed/STEW/STEW.npy`:
+
+```bash
+uv run --locked --no-active python Main.py --config configs/stew.yaml
+```
+
+The importer pools the old partitions, reads `X_train/X_val/X_test`, keeps their
+stored binary labels and subject IDs, and ignores the `X_*_clean` arrays. Signal
+values are preserved apart from float32 conversion. Original rating conversion
+and upstream artifact-removal history are not claimed as re-verified.

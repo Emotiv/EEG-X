@@ -1,6 +1,6 @@
 # EEG-X paper-run readiness
 
-The selected defaults are implemented. The local pipeline still needs source verification.
+The selected defaults are implemented. Upstream non-rASR proof is no longer required under the current user policy.
 Engineering checks do not establish paper scores. The [task log](task.md)
 records selected manuscript differences and local changes.
 
@@ -16,9 +16,10 @@ records selected manuscript differences and local changes.
 | Results evidence | Evaluation saves selected artifacts, predictions and per-seed metrics; W&B handles aggregation |
 | Review | User-selected defaults implemented; manuscript differences remain explicitly documented |
 | Spatial port | Fixed XYZ buffers and contracts exactly match retained EEG-X2 scaling across selected widths |
-| Source readiness | Selected non-rASR source/target provenance and STEW rating evidence remain unresolved |
+| Source policy | Selected processed signals and stored labels/IDs are accepted; upstream non-rASR proof is waived |
+| STEW input check | Selected processed X arrays imported without filtering/normalization; all seed splits retain both classes; primary raw and Soft DiCT CPU gradients are finite |
 
-The available signals can test execution. Verify source/target history before generating paper results. The [manuscript review](paper-review.md) records deliberate differences.
+The available signals can test execution. Record the selected input files and complete measured seed runs before generating paper results. The [manuscript review](paper-review.md) records deliberate differences.
 
 | Study or check | Measured state |
 |---|---:|
@@ -26,9 +27,13 @@ The available signals can test execution. Verify source/target history before ge
 | Real-EEG CPU check: windows | 20 |
 | Real-EEG CPU check: pretraining epochs | 1 |
 | Earlier CPU test suite: passed | 131 |
+| Selected STEW release: subjects | 48 |
+| Selected STEW release: windows | 56,928 |
+| Selected STEW release: channels | 14 |
+| Selected STEW release: excluded windows | 0 |
 | CUDA tests skipped in CPU suite | 3 |
 | Primary-model paper scope, independent runs | 55 |
-| Paper runs still requiring source verification | 55 |
+| Paper runs not yet completed | 55 |
 | Completed paper seed groups | 0 |
 | Shared GPU time already charged, hours | 2.5292 |
 | Shared GPU cap, hours | 72 |

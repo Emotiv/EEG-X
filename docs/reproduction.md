@@ -5,10 +5,10 @@ The model reuses the EEG-X context encoder and active Predictor. Its hybrid
 tokenizer, objective and decoder follow the accepted specification. These are
 revised experiments; their outputs must be measured before paper tables change.
 
-## Audited processed-release contract
+## Processed-release contract
 
 `python -m pretrain.pipeline.processed --contract CONTRACT --output DIRECTORY`
-accepts an audited JSON contract. Relative input paths resolve beside that file.
+accepts a JSON import contract. Relative input paths resolve beside that file.
 Signals are copied unchanged. The importer does not filter or normalize them.
 
 ```json
@@ -26,33 +26,22 @@ Signals are copied unchanged. The importer does not filter or normalize them.
   "label_map": {"0": 0, "1": 1},
   "label_evidence": {"status": "verified", "authority": "SOURCE_LABEL_EVIDENCE"},
   "subject_evidence": {"status": "verified", "authority": "SOURCE_PARTICIPANT_EVIDENCE"},
-  "preprocessing_evidence": {"status": "verified", "authority": "SOURCE_PROCESSING_EVIDENCE"},
-  "preprocessing": {},
-  "source_evidence": "non-rasr-history.json"
+  "preprocessing": {
+    "name": "processed_release_as_is_v1",
+    "sample_rate": 128,
+    "output_dtype": "float32",
+    "local_operations": ["cast_float32"],
+    "upstream_history": "not_verified"
+  }
 }
 ```
 
-This is a shape example, not evidence for a real dataset. Replace the channel
-list and label map with the task's verified values. `preprocessing` must contain
-the full effective profile returned by `pretrain.pipeline.preprocessing.profile()`.
-Matching that dictionary requires source evidence; copying settings into an
-unverified release does not establish its history. Each source row must already
-be a complete task window. No row concatenation or synthetic padding is allowed.
-
-The non-rASR history file identifies every source artifact:
-
-```json
-{
-  "status": "verified",
-  "authority": "ATTRIBUTABLE_SOURCE_OR_PROCESSING_RECORD",
-  "upstream_rasr": false,
-  "source_sha256": ["THE_VERIFIED_ARTIFACT_DIGEST"]
-}
-```
-
-Keep the cited evidence with the dataset. A local `rasr=False` flag cannot
-replace upstream history. Native preparation can accept the same evidence
-through `python -m pretrain.pipeline.prepare --source-evidence HISTORY`.
+This is a shape example. Use the artifact's stored labels and participant IDs,
+and specify its physical channel order explicitly. Each source row must be a
+complete task window. The as-provided profile preserves signal values and casts
+to float32. It does not claim that filtering, normalization or artifact removal
+were re-run or verified. The user waived proof of upstream non-rASR history.
+Optional source-history notes can be retained without becoming a training gate.
 
 ## Run and resume
 
@@ -61,7 +50,7 @@ Edit the YAML manifest and output paths, then run
 Use a seeds list to run independent seeds sequentially on the local machine.
 Each seed gets a fresh process, subject split, output directory and W&B run.
 The `stage` selects pretraining, fine-tuning or frozen evaluation. Downstream
-stages require a pretraining checkpoint. Missing evidence exits directly.
+stages require a matching pretraining checkpoint. Invalid shapes, labels or participant IDs exit directly.
 
 The output saves resolved YAML, split, training history, checkpoints and evaluation
 predictions for each seed. To resume one seed, replace the list with a scalar seed,

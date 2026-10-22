@@ -137,11 +137,13 @@ def test_seed_bank_pools_official_partitions_and_preserves_signal_hashes(tmp_pat
     assert len({json.dumps(group, sort_keys=True) for group in assignments}) == 5
 
 
-def test_local_rasr_flag_cannot_certify_source_history(tmp_path):
-    from pretrain.pipeline.splits import require_paper_source
+def test_upstream_rasr_evidence_is_optional_but_input_contract_is_checked(tmp_path):
+    from pretrain.pipeline.splits import validate_prepared_input
 
     manifest = prepared_fixture(tmp_path / "data")
     metadata = json.loads(manifest.read_text())
     metadata.pop("non_rasr_evidence")
-    with pytest.raises(ValueError, match="non-rASR source history"):
-        require_paper_source(metadata)
+    validate_prepared_input(metadata)
+    metadata["preprocessing"]["clip"] = 999
+    with pytest.raises(ValueError, match="preprocessing differs"):
+        validate_prepared_input(metadata)

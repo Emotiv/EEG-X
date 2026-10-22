@@ -47,18 +47,16 @@ def split_manifest(manifest, output, seed):
     return root / "manifest.json"
 
 
-def require_paper_source(metadata):
-    """Local rasr=False never proves the processing history of an input."""
-    evidence = metadata.get("non_rasr_evidence", {})
-    if evidence.get("status") != "verified" or not evidence.get("sha256"):
-        raise ValueError("Verified non-rASR source history is missing")
-    if evidence.get("upstream_rasr") is not False or not evidence.get("authority"):
-        raise ValueError("Non-rASR evidence needs an authority and explicit upstream policy")
-    if metadata["preprocessing"].get("rasr") is not False:
-        raise ValueError("Prepared inputs must not apply rASR")
-    from pretrain.pipeline.preprocessing import profile
+def validate_prepared_input(metadata):
+    """Check the declared input contract without requiring upstream rASR proof."""
+    from pretrain.pipeline.preprocessing import processed_profile, profile
 
-    for key, value in profile().items():
+    expected = (
+        processed_profile()
+        if metadata["preprocessing"].get("name") == processed_profile()["name"]
+        else profile()
+    )
+    for key, value in expected.items():
         if key != "name" and metadata["preprocessing"].get(key) != value:
             raise ValueError(f"Prepared preprocessing differs from the accepted contract: {key}")
 
@@ -69,7 +67,7 @@ def attach_source_evidence(metadata, evidence_path):
     if sorted(evidence.get("source_sha256", [])) != expected:
         raise ValueError("Non-rASR evidence does not identify all source artifacts")
     metadata["non_rasr_evidence"] = {**evidence, "sha256": sha256_file(evidence_path)}
-    require_paper_source(metadata)
+    validate_prepared_input(metadata)
     metadata.pop("fingerprint", None)
     metadata["fingerprint"] = fingerprint(metadata)
     return metadata
@@ -78,6 +76,6 @@ def attach_source_evidence(metadata, evidence_path):
 def validate_run_dataset(config, metadata):
     """Engineering checks cannot silently become paper experiments."""
     if config.get("purpose", "").startswith("paper_"):
-        require_paper_source(metadata)
+        validate_prepared_input(metadata)
         if metadata.get("split_seed") != config["seed"]:
             raise ValueError("Paper experiments require the matching per-seed split")

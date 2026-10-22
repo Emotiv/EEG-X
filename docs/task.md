@@ -18,7 +18,7 @@ removed. Study planning and orchestration have been removed; W&B groups the inde
 | Masking | Section 2: MAE encoder sees visible tokens; decoder reconstructs masked regions. Sampler and ratio not mentioned; SSP not mentioned. | Reproducible random-token masking, 75% | Your preferred sampler/ratio |
 | DiCT | Section 2.3: argmax winner counts. B.3: G=8, K=32; kernels 9/15; dilations 1/2/4/8/16. Soft routing not mentioned. | Soft routing; preserve paper dictionary | Your corrected soft DiCT |
 | Positions | Equation 3: separable XY sin/cos, frequency base 1000. | EEG-X2 normalized XYZ, base 5 | Paper XY encoding |
-| Targets | Section 2.2: rASR-cleaned targets. C.4 still describes ICA. | No rASR; same processed input/target | Restore rASR-cleaned targets |
+| Targets | Section 2.2: rASR-cleaned targets. C.4 still describes ICA. | Use selected processed X arrays unchanged for input/target; no added rASR; upstream proof waived | Restore rASR-cleaned targets |
 | Training | C.2: Adam, LR 1e-3, cosine, batch 256, 300/10 epochs. Separate fine-tuning optimizer not mentioned. | StableAdamW/AdamW + warmup/cosine; 100/20 epochs | Paper training recipe |
 | Splits | C.4: official TUH splits; other datasets use 20% subject-wise test data. Seeds and validation ratio not mentioned. | Five pooled subject splits, 70/10/20 | Your preferred split ratio |
 | Teacher | Section 2: MAE encoder/decoder. EMA teacher and latent prediction losses not mentioned for EEG-X. | No EMA teacher; keep trainable Predictor | Plain MAE without Predictor |
@@ -77,7 +77,7 @@ Work sequence:
 - [x] Apply the user-selected defaults and update the detailed specification.
 - [x] Wire the versioned defaults through YAML training, checkpoints, and exports.
 - [x] Check real EEG pretraining, fine-tuning, frozen evaluation, and encoder export/reload.
-- [ ] Verify source/target provenance, labels, subjects, and duplicates.
+- [ ] Record selected artifacts, labels, subjects, and duplicate exclusions; upstream non-rASR proof is not required.
 - [ ] Freeze source revision, environment, split bank, and experiment settings.
 - [ ] Run the primary model and regenerate prediction-backed paper tables.
 
@@ -85,3 +85,5 @@ The [paper review](paper-review.md) records manuscript evidence. Train from scra
 in fresh output directories; historical checkpoint compatibility is outside scope. Save new
 checkpoints for reproducible resume and keep the existing shared budget ledger.
 Keep all work local until publication is explicitly requested.
+
+Current STEW source: use the user-selected processed STEW.npy file, its saved binary labels and stored participant IDs. Preserve X values without filtering or normalization, apart from float32 conversion. Record that the original rating threshold and upstream artifact-removal history were not re-derived.

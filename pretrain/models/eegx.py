@@ -210,7 +210,7 @@ class EEGXReconstruction(nn.Module):
             "objective": copy.deepcopy(objective),
             "raw_loss": "masked_patch_mse",
             "hydra_loss": "full_reconstruction_soft_winner_counts_mse",
-            "reconstruction_target": "same_processed_non_rasr_input",
+            "reconstruction_target": "same_processed_input",
             "window_normalization": "none",
             "mask_ratio": 0.75,
             "mask_version": "paper_identity_mix31_v1",
