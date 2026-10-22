@@ -35,12 +35,12 @@ The available signals can test execution. Record the selected input files and co
 | Primary-model paper scope, independent runs | 55 |
 | Paper runs not yet completed | 55 |
 | Completed paper seed groups | 0 |
-| Shared GPU time already charged, hours | 2.5292 |
+| Shared GPU time already charged, hours | 2.5405 |
 | Shared GPU cap, hours | 72 |
 | Approved physical GPU | 1 |
 
-Earlier bounded GPU checks predate the selected position and objective defaults.
-The [performance check](pipeline-performance.md) records that earlier throughput.
-The existing budget ledger remains intact.
+The [performance check](pipeline-performance.md) compares original and current EEG-X
+with a common raw MSE diagnostic. It excludes dictionary losses and uses a shared GPU.
+Full selected-recipe performance remains unmeasured; the existing budget ledger remains intact.
 
 Only completed measured seed groups can supply revised paper values. Group their final metrics in W&B and retain the per-seed predictions locally.

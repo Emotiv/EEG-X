@@ -1,37 +1,51 @@
-# Recorded EEG-X speed check
+# Original versus current EEG-X training cost
 
-These measurements precede the selected XYZ and Soft DiCT default update. They
-describe the earlier implementation; the new defaults have not been timed on GPU.
+This comparison uses the original EEG-X implementation from Git and the current
+EEG-X model. The encoder dimensions match. The tokenizer, masking, decoder,
+normalization and teacher computation differ.
 
-Real EEG training completed on the user-selected GPU while other workloads remained active. Both tasks used forward, backward, and optimizer updates.
-
-| Setting | Value |
+| Measurement condition | Both models |
 |---|---|
-| Physical GPU | 0 |
-| Device | NVIDIA RTX PRO 6000 Blackwell Max-Q |
 | Encoder depth / width / heads | 8 / 64 / 8 |
-| Objective | Raw masked MSE plus Soft Hydra |
-| Precision | BF16 |
-| CPU threads | 4 |
-| Logical / physical batch | 4 / 4 |
-| Warmup / measured updates per task | 5 / 20 |
-| PyTorch allocator limit | 8 GiB |
-| Compilation | Off |
+| Logical / physical batch | 4 / 4; no gradient accumulation |
+| Precision / CPU threads / loader workers | BF16 / 4 / 2 |
+| Device | Physical GPU 0, NVIDIA RTX PRO 6000 Blackwell Max-Q; shared |
+| Allocator limit / compilation | 8 GiB / off |
+| Repeats per dataset | 3 alternating pairs; 5 warmup and 20 measured updates per run |
+| Loss / optimizer | Full-waveform raw MSE against the same input / AdamW |
 
-An update is one parameter change after forward and backward computation. Timings include batch loading and optimizer work, with no gradient accumulation.
+An update includes batch loading, transfer, forward and backward computation,
+gradient clipping, optimizer work and the original teacher update where present.
+Startup and input checks are excluded from timing; GPU work uses the existing budget.
 
-| Dataset | Window | Channels | Windows/s | Median update, s | Peak PyTorch allocation, GiB | Attention |
-|---|---:|---:|---:|---:|---:|---|
-| DREAMER arousal | 2 s | 14 | 34.06 | 0.117 | 0.39 | FlashAttention |
-| TUAB | 10 s | 19 | 20.06 | 0.199 | 2.96 | FlashAttention |
+| Dataset; channels × samples | Before windows/s | After windows/s | Before update, ms | After update, ms | Observed throughput change |
+|---|---:|---:|---:|---:|---:|
+| DREAMER arousal; 14 × 256 | 72.82 | 94.60 | 54.93 | 42.28 | +29.9% |
+| TUAB; 19 × 1280 | 70.56 | 92.48 | 56.69 | 43.25 | +31.1% |
 
-Both tasks completed their bounded training checks. Peak allocation covers PyTorch tensors, not total device memory.
+Results use the median across repeated runs. These are observed costs on a shared
+GPU; contention and model changes prevent a code-speedup conclusion.
 
-| Contention and budget | DREAMER | TUAB |
-|---|---:|---:|
-| Device utilization before / after | 99% / 97% | 99% / 97% |
-| Charged GPU time, s | 7.78 | 38.43 |
+| Dataset | Before allocated, GiB | After allocated, GiB | Allocation change | Before reserved, GiB | After reserved, GiB |
+|---|---:|---:|---:|---:|---:|
+| DREAMER arousal | 0.080 | 0.084 | +5.3% | 0.082 | 0.086 |
+| TUAB | 0.478 | 0.152 | -68.1% | 0.605 | 0.182 |
 
-The existing budget ledger includes both runs. Other compute workloads were present before each run.
+Peak allocation measures this process's PyTorch tensors. Reserved memory includes
+the allocator cache; neither measure represents total device memory.
 
-These measurements show throughput under contention. They cannot establish an isolated GPU speed or a code speedup. Previous EEGX2 runs use a different model and cannot provide a matched comparison. These short training runs cannot supply paper accuracy results.
+| Model difference | Original EEG-X | Current EEG-X |
+|---|---|---|
+| Patch length / stride, samples | 128 / 32 | 32 / 32 |
+| Masking | Subsequence sampling; requested 50% | Fixed 75% per window |
+| Total parameters, DREAMER | 912,643 | 653,626 |
+| Total parameters, TUAB | 912,653 | 653,626 |
+| Predictor / decoder | 2 blocks / transposed convolution | 1 block / 4 Transformer blocks |
+| Teacher | Full target encoder and momentum update | None |
+| Input / normalization / attention | Spectral / LayerNorm / manual | Raw plus spectral / RMSNorm with Q/K normalization / FlashAttention |
+
+The original release imports a missing dictionary implementation. This diagnostic
+uses a common raw MSE loss and optimizer, with dictionary losses disabled for both
+models. It does not reproduce either complete training recipe or establish paper accuracy.
+
+[Recorded measurements](measurements/eegx-performance.json) preserve update times, model settings, source digests and device load.
