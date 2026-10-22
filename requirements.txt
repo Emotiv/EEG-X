@@ -35,7 +35,7 @@ botocore @ file:///opt/conda/conda-bld/botocore_1649076662316/work
 Bottleneck @ file:///tmp/build/80754af9/bottleneck_1648028898966/work
 brotlipy==0.7.0
 cachetools @ file:///tmp/build/80754af9/cachetools_1619597386817/work
-certifi==2021.10.8
+certifi==2026.10.19
 cffi @ file:///opt/conda/conda-bld/cffi_1642701102775/work
 chardet @ file:///tmp/build/80754af9/chardet_1607706775000/work
 charset-normalizer @ file:///tmp/build/80754af9/charset-normalizer_1630003229654/work
