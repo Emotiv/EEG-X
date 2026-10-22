@@ -15,7 +15,7 @@ from pretrain.compute import configure_compute, autocast_context as context
 from pretrain.pipeline.budget import NoGpuBudget
 from pretrain.pipeline.checkpoint import contract, source_revision
 from pretrain.pipeline.data import Windows, evaluation_batches
-from pretrain.pipeline.downstream import load_encoder
+from pretrain.pipeline.downstream import load_encoder, validate_pretraining_source
 from pretrain.pipeline.metrics import classification
 from pretrain.models.factory import attention_backends
 from pretrain.metadata import atomic_json
@@ -89,11 +89,12 @@ def run(config, manifest, checkpoint, output, *, device="cpu", budget=None, trac
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
     encoder, payload = load_encoder(checkpoint)
-    encoder.to(device)
     train, validation = Windows(manifest, "train"), Windows(manifest, "validation")
     from pretrain.pipeline.splits import validate_run_dataset
 
     validate_run_dataset(config, train.metadata)
+    validate_pretraining_source(payload, config, train.metadata, mode="frozen")
+    encoder.to(device)
     for parameter in encoder.parameters():
         parameter.requires_grad_(False)
     provenance = contract(config, train.metadata, device=device)

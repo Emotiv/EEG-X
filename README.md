@@ -133,6 +133,11 @@ Use a fresh output for each invocation. Preserve the existing budget ledger.
 Checkpoint selection and early stopping use validation. Test probes are diagnostic.
 Source, environment, data, split and model contracts protect reproducible resume.
 
+New checkpoints save the pretraining task, source release and subject split.
+Fine-tuning requires the same dataset and split. Frozen transfer to Crowdsourced,
+BCICIV-2a or Kalunga requires a TUAB checkpoint with the matching model and seed.
+Evaluation rejects mismatched sources before test access or W&B result logging.
+
 ## Weights & Biases
 
 The example YAML enables W&B. Authenticate once with `wandb login` or your

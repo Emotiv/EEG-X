@@ -22,7 +22,7 @@ from pretrain.pipeline.checkpoint import (
     write_history,
 )
 from pretrain.pipeline.data import Windows, batches, chunks, evaluation_batches, to_device
-from pretrain.pipeline.downstream import classifier, optimizer_groups
+from pretrain.pipeline.downstream import classifier, optimizer_groups, validate_pretraining_source
 from pretrain.pipeline.metrics import LossTotals, classification
 from pretrain.models.factory import attention_backends
 from pretrain.metadata import atomic_json
@@ -86,7 +86,8 @@ def run(
     clip_norm = config.get("gradient_clip_norm", GRADIENT_CLIP_NORM)
     config["pretraining_checkpoint_sha256"] = sha256_file(checkpoint)
     provenance = contract(config, train.metadata, device=device)
-    model, _ = classifier(checkpoint, len(train.metadata["classes"]), config["seed"])
+    model, pretrained = classifier(checkpoint, len(train.metadata["classes"]), config["seed"])
+    validate_pretraining_source(pretrained, config, train.metadata, mode="finetune")
     model.to(device)
     groups, audit = optimizer_groups(model)
     for group, record in zip(groups, audit):
@@ -237,6 +238,7 @@ def run(
                 "epoch": best["epoch"],
                 "validation": best["validation"],
                 "contract": provenance,
+                "pretraining_contract": pretrained["contract"],
             }
             atomic_json(output / "selection.json", selection)
             test = Windows(manifest, "test")

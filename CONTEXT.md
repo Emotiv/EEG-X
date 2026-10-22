@@ -20,6 +20,8 @@
 
 **Fresh training**: The user will train new models from scratch. Do not add support for loading or migrating historical checkpoints. Checkpoint contracts protect integrity and reproducible resume within new runs; downstream evaluation uses the newly trained encoders.
 
+**Checkpoint source**: New checkpoints bind the pretraining task, source release and subject split. Fine-tuning must use the same dataset and split. Frozen transfer to Crowdsourced, BCICIV-2a or Kalunga must use TUAB with the matching seed and model. Enforce this in both the YAML command and downstream evaluation; reject mismatched or missing source provenance before test access and W&B result logging.
+
 **GPU budget**: One persistent ledger covers all local experiments and paper runs. Carry existing usage forward. The approved device, cap, and storage policy are defined in the specification.
 
 **GPU performance check**: The user selected physical GPU zero for the current bounded training checks and approved sharing it with existing workloads. Shared checks have an explicit allocator limit, retain the existing budget, and record contention. Their timings cannot establish a code speedup. Paper studies keep their planned device.

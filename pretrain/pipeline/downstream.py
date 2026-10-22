@@ -4,8 +4,45 @@ import re
 
 import torch
 
-from pretrain.pipeline.checkpoint import set_seed, stream_seed, software_contract
-from pretrain.models.factory import Classifier, create_model
+from pretrain.pipeline.checkpoint import dataset_identity, set_seed, stream_seed, software_contract
+from pretrain.models.factory import Classifier, create_model, resolve_model_config
+
+
+TRANSFER_TASKS = {"crowdsourced", "bciciv_2a", "kalunga"}
+
+
+def validate_pretraining_model(payload, config):
+    """A selected encoder must use the requested model and training seed."""
+    expected = resolve_model_config(config)
+    pretrained = payload["config"]
+    if any(
+        pretrained.get(key) != expected.get(key)
+        for key in ("model", "seed", "depth", "width", "heads")
+    ):
+        raise ValueError("The pretraining checkpoint must match the configured seed and model")
+
+
+def validate_pretraining_source(payload, config, manifest, *, mode):
+    """Enforce in-domain pairing and the agreed TUAB transfer source."""
+    validate_pretraining_model(payload, config)
+    source = payload["contract"].get("dataset_identity")
+    if not isinstance(source, dict) or any(
+        not isinstance(source.get(key), str) or not source[key]
+        for key in ("task", "release_sha256", "split_sha256")
+    ):
+        raise ValueError(
+            "The pretraining checkpoint lacks source dataset provenance; train a fresh model"
+        )
+    target = dataset_identity(manifest)
+    transfer = mode == "frozen" and manifest["task"] in TRANSFER_TASKS
+    if transfer:
+        if source["task"] != "tuab":
+            raise ValueError("Paper frozen transfer requires a TUAB pretraining checkpoint")
+        return
+    if source != target or payload["contract"]["dataset"] != manifest["fingerprint"]:
+        raise ValueError(
+            "In-domain evaluation requires the same dataset and subject split as pretraining"
+        )
 
 
 def load_encoder(checkpoint):

@@ -46,6 +46,8 @@ Use non-rASR inputs and targets, as selected by the user. Reconstruct the same p
 
 Each in-domain model starts from scratch. Each cross-domain classifier uses the TUAB encoder trained with the matching seed and architecture.
 
+New pretraining checkpoints record the source task, release hash and subject-split identity. Fine-tuning requires the same prepared dataset and split as pretraining. Frozen transfer to Crowdsourced, BCICIV-2a or Kalunga requires TUAB as its source. A mismatched or missing source identity stops evaluation before test access and result logging.
+
 | Split decision | Contract |
 |---|---|
 | Subject pool | Combine subjects from the old train, validation, and test partitions before assigning new roles |

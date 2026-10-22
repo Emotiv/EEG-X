@@ -166,11 +166,11 @@ def run_config(path):
         import copy
         import torch
         from pretrain.metadata import fingerprint
+        from pretrain.pipeline.downstream import validate_pretraining_model
 
         payload = torch.load(settings["checkpoint"], map_location="cpu", weights_only=True)
         pretrained = payload["config"]
-        if any(pretrained.get(key) != config[key] for key in ("seed", "depth", "width", "heads")):
-            raise ValueError("The pretraining checkpoint must match the configured seed and model")
+        validate_pretraining_model(payload, config)
         recipe = copy.deepcopy(pretrained)
         recipe.pop("seed", None)
         if recipe.get("objective"):
@@ -189,6 +189,10 @@ def run_config(path):
     root.mkdir(parents=True, exist_ok=False)
     manifest = split_manifest(settings["manifest"], root / "split", config["seed"])
     train = Windows(manifest, "train", verify_signals=False)
+    if settings.get("checkpoint"):
+        from pretrain.pipeline.downstream import validate_pretraining_source
+
+        validate_pretraining_source(payload, config, train.metadata, mode=stage)
     config["logical_batch"] = min(config["logical_batch"], len(train))
     (root / "config.yaml").write_text(
         yaml.safe_dump(

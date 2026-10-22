@@ -84,6 +84,22 @@ def optimizer_settings(optimizer):
     }
 
 
+def dataset_identity(manifest):
+    """Bind a checkpoint to the source task, release and subject assignment."""
+    return {
+        "task": manifest["task"],
+        "release_sha256": manifest.get("parent_manifest_sha256", manifest["fingerprint"]),
+        "split_sha256": fingerprint(
+            {
+                "seed": manifest.get("split_seed"),
+                "policy": manifest.get("split_policy"),
+                "subjects": manifest["subjects"],
+                "windows_sha256": manifest["windows_sha256"],
+            }
+        ),
+    }
+
+
 def contract(config, manifest, *, device="cpu"):
     resolved = torch.device(device)
     execution = {
@@ -105,6 +121,7 @@ def contract(config, manifest, *, device="cpu"):
         **software_contract(),
         "config": copy.deepcopy(config),
         "dataset": manifest["fingerprint"],
+        "dataset_identity": dataset_identity(manifest),
         "execution": execution,
     }
 
