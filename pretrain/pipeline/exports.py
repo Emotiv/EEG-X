@@ -68,7 +68,7 @@ This encoder uses aligned raw and STFT magnitude patches with the EEG-X context 
 
 The bundle records the source-backed channel order, preprocessing and fixed subject membership. Apply that preprocessing once to complete acquisition recordings before cutting windows.
 
-Use the repository loader with its locked environment. Downstream measurements and incomplete cells are kept in the study registry.
+Use the repository loader with its locked environment. Downstream measurements are saved with their predictions and logged to W&B when enabled.
 """
     (root / "MODEL_CARD.md").write_text(card)
     atomic_json(

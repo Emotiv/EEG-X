@@ -2,11 +2,9 @@
 
 import argparse
 import json
-from pathlib import Path
 
 from pretrain.pipeline.data import PreparedWriter
 from pretrain.pipeline.preprocessing import preprocess, profile
-from pretrain.metadata import atomic_json
 
 
 def prepare_adapter(adapter, output, *, source_evidence=None):
@@ -22,13 +20,15 @@ def prepare_adapter(adapter, output, *, source_evidence=None):
         values = preprocess(item["volts"], item["sample_rate"], adapter.channels)
         item["source"] = {**item["source"], "native_sample_rate": item["sample_rate"]}
         writer.add(values, **{k: v for k, v in item.items() if k not in {"volts", "sample_rate"}})
-    metadata = writer.finish()
-    if source_evidence:
-        from pretrain.pipeline.splits import attach_source_evidence
 
-        metadata = attach_source_evidence(metadata, source_evidence)
-        atomic_json(Path(output) / "manifest.json", metadata)
-    return metadata
+    def finalize(metadata):
+        if source_evidence:
+            from pretrain.pipeline.splits import attach_source_evidence
+
+            return attach_source_evidence(metadata, source_evidence)
+        return metadata
+
+    return writer.finish(finalize=finalize)
 
 
 def main():
@@ -80,12 +80,7 @@ def main():
         result = prepare_adapter(adapter, args.output, source_evidence=args.source_evidence)
         print(json.dumps({"status": "ready", "task": args.task, "counts": result["counts"]}))
     except (ValueError, PermissionError, FileNotFoundError) as error:
-        output = Path(args.output)
-        output.mkdir(parents=True, exist_ok=True)
-        result = {"status": "blocked", "task": args.task, "reason": str(error)}
-        atomic_json(output / "blocked.json", result)
-        print(json.dumps(result))
-        raise SystemExit(2) from error
+        parser.exit(2, f"{args.task}: {error}\n")
 
 
 if __name__ == "__main__":

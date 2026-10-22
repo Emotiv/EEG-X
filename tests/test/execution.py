@@ -32,16 +32,17 @@ def test_public_module_entrypoints_use_local_package(module):
     assert "usage:" in result.stdout
 
 
-def test_original_entrypoint_exposes_the_revised_paper_pipeline():
+def test_main_entrypoint_exposes_one_yaml_configuration():
     root = Path(__file__).resolve().parents[2]
     result = subprocess.run(
-        [sys.executable, "Main.py", "paper", "--help"],
+        [sys.executable, "Main.py", "--help"],
         cwd=root,
         text=True,
         capture_output=True,
         check=True,
     )
-    assert "plan" in result.stdout and "report" in result.stdout
+    assert "--config" in result.stdout
+    assert "--study" not in result.stdout
 
 
 def test_compute_cpu_fallback_and_validation():

@@ -2,7 +2,13 @@
 
 import numpy as np
 import torch
-from sklearn.metrics import balanced_accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    balanced_accuracy_score,
+    f1_score,
+    roc_auc_score,
+)
 
 
 class LossTotals:
@@ -40,10 +46,23 @@ def classification(labels, probabilities):
     if not np.allclose(probabilities.sum(-1), 1, atol=1e-4):
         raise ValueError("Probabilities do not sum to one")
     output = {"balanced_accuracy": float(balanced_accuracy_score(labels, probabilities.argmax(-1)))}
+    predictions = probabilities.argmax(-1)
+    output.update(
+        acc=float(accuracy_score(labels, predictions)),
+        f1_score_micro=float(f1_score(labels, predictions, average="micro", zero_division=0)),
+        f1_score_macro=float(f1_score(labels, predictions, average="macro", zero_division=0)),
+    )
     if classes == 2:
         output["auroc"] = float(roc_auc_score(labels, probabilities[:, 1]))
+        output["auprc"] = float(average_precision_score(labels, probabilities[:, 1]))
     else:
         output["weighted_f1"] = float(
             f1_score(labels, probabilities.argmax(-1), average="weighted")
+        )
+        output["auroc"] = float(
+            roc_auc_score(labels, probabilities, multi_class="ovr", average="macro")
+        )
+        output["auprc"] = float(
+            average_precision_score(np.eye(classes)[labels], probabilities, average="macro")
         )
     return output

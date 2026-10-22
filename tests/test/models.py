@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from pretrain.objectives import DEFAULT_HYDRA
-from pretrain.models.factory import Classifier, GEOMETRIES, assert_all_rms, create_model, masks
+from pretrain.models.factory import Classifier, assert_all_rms, create_model, masks
 
 
 @pytest.mark.parametrize("normalization", ["none", "rmsnorm"])
@@ -128,17 +128,21 @@ def test_primary_and_soft_dictionary_are_defaults():
     assert model.contract["objective"] == {**DEFAULT_HYDRA, "seed": 241}
     assert model.hydra is not None
     assert model.contract["teacher"] == "none"
-    assert not any("teacher" in name or "target_encoder" in name for name, _ in model.named_modules())
+    assert not any(
+        "teacher" in name or "target_encoder" in name for name, _ in model.named_modules()
+    )
 
 
-def test_scaling_uses_paper_grid_after_the_primary_model():
-    assert next(iter(GEOMETRIES)) == "d8w64"
-    assert set(GEOMETRIES.values()) == {(d, w) for d in (4, 8) for w in (64, 128, 512)}
-    model = create_model({"size": "d4w64", "input_samples": 256, "objective": None})
+def test_one_explicit_model_configuration_controls_the_encoder():
+    model = create_model({"depth": 2, "width": 32, "input_samples": 256, "objective": None})
+    assert model.contract["depth"] == 2 and model.contract["width"] == 32
+    assert len(model.encoder.contex_encoder.TRMs) == 2
     eeg, ids = torch.randn(1, 2, 256), torch.tensor([0, 1])
     assert torch.isfinite(model(eeg, ids, mask=masks(["a"], ids, samples=256, seed=241))["loss"])
-    with pytest.raises(ValueError, match="accepted EEG-X size"):
-        create_model({"size": "d16w64", "input_samples": 256})
+    with pytest.raises(ValueError, match="geometry differs"):
+        create_model({"size": "d8w64", "depth": 2, "input_samples": 256})
+    with pytest.raises(ValueError, match="width divisible"):
+        create_model({"width": 65, "input_samples": 256})
 
 
 def test_old_model_and_objective_versions_are_rejected():
@@ -148,4 +152,6 @@ def test_old_model_and_objective_versions_are_rejected():
     with pytest.raises(ValueError, match="checkpoint contract"):
         model.load_state_dict(state)
     with pytest.raises(ValueError, match="Unknown objective"):
-        create_model({"input_samples": 256, "objective": {**DEFAULT_HYDRA, "name": "raw_soft_hydra_v1"}})
+        create_model(
+            {"input_samples": 256, "objective": {**DEFAULT_HYDRA, "name": "raw_soft_hydra_v1"}}
+        )

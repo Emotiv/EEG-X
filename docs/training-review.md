@@ -13,7 +13,7 @@ records selected manuscript differences and local changes.
 | Model checks | Token masking, spectral isolation, gradient flow and checkpoint round trips passed |
 | Interrupted diagnostics | Resume completes pending curves and preserves prior completed curves |
 | Selection | Validation selects checkpoints; final test predictions follow saved selection locks |
-| Results evidence | Tables check predictions, subject membership, selected artifacts and metric calculations |
+| Results evidence | Evaluation saves selected artifacts, predictions and per-seed metrics; W&B handles aggregation |
 | Review | User-selected defaults implemented; manuscript differences remain explicitly documented |
 | Spatial port | Fixed XYZ buffers and contracts exactly match retained EEG-X2 scaling across selected widths |
 | Source readiness | Selected non-rASR source/target provenance and STEW rating evidence remain unresolved |
@@ -25,10 +25,10 @@ The available signals can test execution. Verify source/target history before ge
 | Real-EEG CPU check: subjects | 10 |
 | Real-EEG CPU check: windows | 20 |
 | Real-EEG CPU check: pretraining epochs | 1 |
-| CPU test suite: passed | 131 |
+| Earlier CPU test suite: passed | 131 |
 | CUDA tests skipped in CPU suite | 3 |
-| Planned experiments | 330 |
-| Experiments blocked by source requirements | 330 |
+| Primary-model paper scope, independent runs | 55 |
+| Paper runs still requiring source verification | 55 |
 | Completed paper seed groups | 0 |
 | Shared GPU time already charged, hours | 2.5292 |
 | Shared GPU cap, hours | 72 |
@@ -38,4 +38,4 @@ Earlier bounded GPU checks predate the selected position and objective defaults.
 The [performance check](pipeline-performance.md) records that earlier throughput.
 The existing budget ledger remains intact.
 
-Only completed measured seed groups can supply revised paper values. The generated CSV and LaTeX tables remain empty until those groups complete.
+Only completed measured seed groups can supply revised paper values. Group their final metrics in W&B and retain the per-seed predictions locally.

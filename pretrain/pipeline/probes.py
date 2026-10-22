@@ -24,7 +24,7 @@ def carry_completed(resume, output):
         shutil.copy2(receipt, output / receipt.name)
 
 
-def probe(encoder, manifest, config, output, epoch, device, budget):
+def probe(encoder, manifest, config, output, epoch, device, budget, *, tracker=None):
     root = output / "probes" / str(epoch)
     root.mkdir(parents=True, exist_ok=False)
     train = Windows(manifest, "train")
@@ -43,6 +43,13 @@ def probe(encoder, manifest, config, output, epoch, device, budget):
         x, y, identities = features(encoder, view, config, device, budget)
         probability = classifier.predict_proba(x)
         scores[role] = classification(y, probability)
+        if tracker:
+            prefix = f"probe/{role}" if role == "validation" else "diagnostic/test"
+            metrics = {f"{prefix}/{key}": value for key, value in scores[role].items()}
+            if isinstance(epoch, int):
+                tracker.log({"epoch": epoch, **metrics})
+            else:
+                tracker.summary({f"selected/{key}": value for key, value in metrics.items()})
         np.savez_compressed(
             root / f"{role}.npz",
             labels=y,

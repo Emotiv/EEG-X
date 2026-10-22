@@ -96,7 +96,7 @@ def test_benchmark_time_limit_stops_at_an_update_boundary(tmp_path, monkeypatch)
 
 
 def test_benchmark_cannot_start_a_new_uncharged_study(tmp_path):
-    with pytest.raises(ValueError, match="existing shared study budget"):
+    with pytest.raises(ValueError, match="existing shared GPU budget"):
         benchmark({}, "unused", tmp_path / "output", tmp_path / "missing", gpu=1)
 
 
@@ -120,7 +120,7 @@ def test_benchmark_rejects_an_invalid_device_before_any_gpu_query(tmp_path, gpu)
 
 
 def test_gpu_zero_reaches_the_availability_check(tmp_path, monkeypatch):
-    from pretrain.pipeline.execution import GpuBusy
+    from pretrain.gpu import GpuBusy
 
     (tmp_path / "budget.json").write_text("{}")
     selected = []

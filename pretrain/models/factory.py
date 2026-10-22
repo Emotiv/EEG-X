@@ -1,6 +1,7 @@
 """Revised EEG-X construction and all-RMS supervised readout."""
 
 import copy
+import re
 
 import torch
 from torch import nn
@@ -10,30 +11,43 @@ from pretrain.normalization import RMSNorm
 from pretrain.objectives import DEFAULT_HYDRA, validate_objective
 
 
-GEOMETRIES = {
-    "d8w64": (8, 64),
-    "d4w64": (4, 64),
-    "d4w128": (4, 128),
-    "d4w512": (4, 512),
-    "d8w128": (8, 128),
-    "d8w512": (8, 512),
-}
-
-
 def resolve_model_config(config):
-    """Materialize the selected primary geometry and default objective."""
-    resolved = {"model": "eegx_hybrid_v2", "size": "d8w64", "dropout": 0.1, **copy.deepcopy(config)}
-    if resolved["size"] not in GEOMETRIES:
-        raise ValueError("An accepted EEG-X size is required; EEGX2 checkpoints are incompatible")
-    depth, width = GEOMETRIES[resolved["size"]]
-    expected = {"model": "eegx_hybrid_v2", "depth": depth, "width": width, "heads": 8}
-    if any(key in resolved and resolved[key] != value for key, value in expected.items()):
-        raise ValueError("Explicit EEG-X geometry differs from the selected size")
-    resolved.update(expected)
+    """Resolve one explicitly configured EEG-X model, with no experiment grid."""
+    supplied = copy.deepcopy(config)
+    if "size" in supplied:
+        match = re.fullmatch(r"d([1-9][0-9]*)w([1-9][0-9]*)", str(supplied["size"]))
+        if match is None:
+            raise ValueError(
+                "EEG-X size must use d<depth>w<width>; EEGX2 checkpoints are incompatible"
+            )
+        for key, value in zip(("depth", "width"), map(int, match.groups())):
+            if key in supplied and supplied[key] != value:
+                raise ValueError("Explicit EEG-X geometry differs from the selected size")
+            supplied[key] = value
+    resolved = {
+        "model": "eegx_hybrid_v2",
+        "depth": 8,
+        "width": 64,
+        "heads": 8,
+        "dropout": 0.1,
+        **supplied,
+    }
+    if resolved["model"] != "eegx_hybrid_v2":
+        raise ValueError("The EEG-X hybrid model is required")
+    if any(
+        type(resolved[key]) is not int or resolved[key] < 1 for key in ("depth", "width", "heads")
+    ):
+        raise ValueError("EEG-X depth, width and heads must be positive integers")
+    if resolved["heads"] != 8 or resolved["width"] % resolved["heads"]:
+        raise ValueError("EEG-X requires eight heads and a width divisible by eight")
+    resolved["size"] = f"d{resolved['depth']}w{resolved['width']}"
     if "objective" not in resolved:
         resolved["objective"] = {
-            **copy.deepcopy(DEFAULT_HYDRA), "seed": resolved.get("seed", DEFAULT_HYDRA["seed"])
+            **copy.deepcopy(DEFAULT_HYDRA),
+            "seed": resolved.get("seed", DEFAULT_HYDRA["seed"]),
         }
+    elif isinstance(resolved["objective"], dict):
+        resolved["objective"].setdefault("seed", resolved.get("seed", DEFAULT_HYDRA["seed"]))
     validate_objective(resolved["objective"])
     return resolved
 

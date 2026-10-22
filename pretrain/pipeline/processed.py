@@ -6,23 +6,20 @@ from pathlib import Path
 
 from pretrain.channel_identity import sha256_file
 from pretrain.pipeline.artifacts import inspect_artifact
-from pretrain.pipeline.data import PreparedWriter
+from pretrain.pipeline.data import PreparedWriter, TASK_WINDOWS
 from pretrain.pipeline.preprocessing import profile
 from pretrain.pipeline.splits import attach_source_evidence
-from pretrain.metadata import atomic_json
 
 
 def prepare(contract_path, output):
     """The audited contract supplies field names, physical order, and identities.
 
     Each release row remains one complete window. Source partitions are retained
-    as evidence only; the study later assigns subjects separately for each seed.
+    as evidence only; each YAML run assigns subjects for its selected seed.
     """
     path = Path(contract_path).resolve()
     settings = json.loads(path.read_text())
-    from pretrain.pipeline.study import IN_DOMAIN, TRANSFER
-
-    samples = (IN_DOMAIN | TRANSFER)[settings["task"]]
+    samples = TASK_WINDOWS[settings["task"]]
     for name in ("label_evidence", "subject_evidence", "preprocessing_evidence"):
         if settings[name].get("status") != "verified" or not settings[name].get("authority"):
             raise ValueError(f"Verified attributable {name} is required")
@@ -80,19 +77,20 @@ def prepare(contract_path, output):
                 },
                 label=label_map[int(y[row])],
             )
-    metadata = writer.finish()
-    metadata["subject_evidence"] = settings["subject_evidence"]
-    metadata["preprocessing_evidence"] = settings["preprocessing_evidence"]
-    metadata["release_contract_sha256"] = sha256_file(path)
-    metadata["release_counts"] = {
-        "input_windows": len(writer.events),
-        "retained_windows": sum(metadata["counts"].values()),
-        "excluded_entries": len(metadata["excluded"]),
-    }
-    evidence = (path.parent / settings["source_evidence"]).resolve()
-    metadata = attach_source_evidence(metadata, evidence)
-    atomic_json(Path(output) / "manifest.json", metadata)
-    return metadata
+
+    def finalize(metadata):
+        metadata["subject_evidence"] = settings["subject_evidence"]
+        metadata["preprocessing_evidence"] = settings["preprocessing_evidence"]
+        metadata["release_contract_sha256"] = sha256_file(path)
+        metadata["release_counts"] = {
+            "input_windows": len(writer.events),
+            "retained_windows": sum(metadata["counts"].values()),
+            "excluded_entries": len(metadata["excluded"]),
+        }
+        evidence = (path.parent / settings["source_evidence"]).resolve()
+        return attach_source_evidence(metadata, evidence)
+
+    return writer.finish(finalize=finalize)
 
 
 def main():

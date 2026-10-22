@@ -83,7 +83,7 @@ def features(encoder, view, config, device, budget):
     return np.concatenate(values), np.concatenate(labels), identities
 
 
-def run(config, manifest, checkpoint, output, *, device="cpu", budget=None):
+def run(config, manifest, checkpoint, output, *, device="cpu", budget=None, tracker=None):
     budget = budget or NoGpuBudget()
     device = torch.device(device)
     output = Path(output)
@@ -134,6 +134,15 @@ def run(config, manifest, checkpoint, output, *, device="cpu", budget=None):
     x, y, identities = features(encoder, test, config, device, budget)
     probabilities = probe.predict_proba(x)
     scores = classification(y, probabilities)
+    if tracker:
+        tracker.log({"epoch": 0, **{f"test/{key}": value for key, value in scores.items()}})
+        tracker.summary(
+            {
+                **{f"val/{key}": value for key, value in validation_scores.items()},
+                **{f"test/{key}": value for key, value in scores.items()},
+            }
+        )
+        tracker.confusion(y, probabilities)
     atomic_json(output / "attention.json", attention_backends(encoder))
     np.savez_compressed(
         output / "test_predictions.npz",

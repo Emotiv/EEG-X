@@ -29,12 +29,14 @@ pretrain/
   __main__.py       command entrypoint
   models/           EEG-X encoder, Predictor, reconstruction and Soft Hydra
   datasets/         historical array loader and raw STEW reader
-  pipeline/         preparation, study planning, training, evaluation and tables
+  pipeline/         preparation, training and evaluation
   optimizers/       local StableAdamW
   compute.py        precision and deterministic-kernel policy
   normalization.py  shared FP32 RMSNorm
   metadata.py       fingerprints and atomic metadata
   rng.py            reproducible random states
+  tracking.py       W&B logging for one seed
+  gpu.py            GPU availability checks
 ```
 
 `pretrain/pipeline/` constructs models through `pretrain/models/factory.py`.
@@ -42,14 +44,13 @@ Dataset reader code lives in `pretrain/datasets/`; input data paths remain
 external configuration. Native adapters and audited release preparation stay
 in `pretrain/pipeline/`.
 The historical baseline models and training loops remain in Git history.
-`Main.py paper ...` is a compatibility command for this same pipeline.
+`Main.py --config ...` is the main entrypoint.
 
 ## Selected defaults
 
 | Setting | Default |
 |---|---|
 | Primary encoder | 8 layers, width 64, 8 heads |
-| Scaling | Depths 4/8; widths 64/128/512; primary model first |
 | Tokenizer | Raw plus STFT, non-overlapping patches of 32 samples |
 | Spatial encoding | Fixed normalized EEG-X2 XYZ sin/cos, base 5 |
 | Reconstruction | Masked raw MSE plus soft DiCT; G=8, K=32, lengths 9/15, dilations 1/2/4/8/16 |
@@ -61,10 +62,44 @@ and the trainable Predictor are retained; teacher and EMA are absent. Non-rASR
 processing applies to both input and target. The [task log](docs/task.md) records
 the deliberate manuscript differences and training settings.
 
-Omitting model size selects the primary encoder; omitting the objective selects
+Omitting encoder depth and width selects the primary encoder; omitting the objective selects
 soft DiCT plus raw MSE. Explicit `objective: null` selects a raw-only ablation.
-Train from scratch in a fresh study and carry the existing shared GPU budget
+Train new models from scratch and carry the existing shared GPU budget
 forward. Saved checkpoints support reproducible resume of those new runs.
+
+## Train EEG-X from YAML
+
+Edit `configs/eegx.yaml` to set the prepared dataset manifest and output directory,
+then run one model directly:
+
+```bash
+uv run --locked --no-active python Main.py --config configs/eegx.yaml
+```
+
+The YAML holds the stage, encoder depth and width, seeds, batch sizes, epochs,
+optimizer, learning-rate schedule, objective, device and W&B settings. Paths resolve beside the YAML file. The script
+creates a subject split for each selected seed and runs the seeds sequentially
+on the local machine. Each seed uses a fresh process on the selected GPU.
+Input errors stop the command directly. Only the configured model runs.
+
+```yaml
+seeds: [241, 242, 243, 244, 245]
+output: ../.runs/eegx-d8w64
+```
+
+The output contains `seed-241/`, `seed-242/` and the remaining seed directories.
+Each contains `config.yaml`, `split/manifest.json`, W&B files and `training/`
+logs/checkpoints. Validation chooses the best checkpoint independently per seed.
+The loop stops on failure and leaves completed outputs intact. It uses no SLURM.
+
+For one run, replace `seeds` with `seed: 241`; its files go directly into `output`.
+To resume that seed, set `resume` to its previous `training/last.pth` and choose a
+fresh output. Keep the other settings and input data unchanged. Batch checkpoint
+or resume paths must contain `{seed}` so each run loads its matching checkpoint.
+
+`device: cuda:1` selects physical GPU 1 and preserves the existing shared budget.
+For a CPU check, use `device: cpu` and `precision: fp32`. Inputs use the prepared
+manifest described below, with physical channel IDs and verified source history.
 
 ## Reproducible paper rerun
 
@@ -86,29 +121,48 @@ verified label mapping, and attributable subject and preprocessing evidence.
 See [the contract guide](docs/reproduction.md). Native adapters remain available
 through `python -m pretrain.pipeline.prepare --help`.
 
-Plan into a fresh study directory and carry the existing shared GPU ledger:
+Each seed runs the stage selected in YAML:
 
-```bash
-uv run --locked --no-active python -m pretrain plan \
-  --datasets /path/to/verified-datasets.json --study .runs/revised-study \
-  --budget .runs/paper-gpu1-v1 --gpu 1
-uv run --locked --no-active python -m pretrain run --study .runs/revised-study
-uv run --locked --no-active python -m pretrain report --study .runs/revised-study
+| Stage | Configuration | Result |
+|---|---|---|
+| `pretrain` | `checkpoint: null` | Train an EEG-X encoder from scratch |
+| `finetune` | `checkpoint` points to pretraining `best.pth` | Tune encoder and classifier; evaluate the validation-selected model |
+| `frozen` | `checkpoint` points to pretraining `best.pth` | Freeze encoder and fit a classifier on training data |
+
+Use a fresh output for each invocation. Preserve the existing budget ledger.
+Checkpoint selection and early stopping use validation. Test probes are diagnostic.
+Source, environment, data, split and model contracts protect reproducible resume.
+
+## Weights & Biases
+
+The example YAML enables W&B. Authenticate once with `wandb login` or your
+existing W&B environment, then run the same command. Set `wandb.enabled: false`
+to keep only local logs, or `wandb.mode: offline` to write W&B files locally.
+
+```yaml
+wandb:
+  enabled: true
+  project: eeg-x
+  entity: null
+  group: null
+  mode: online
 ```
 
-Planning pools old subject partitions and freezes separate splits for the seed
-bank. Unknown non-rASR history blocks a task. Other eligible tasks can proceed.
-The controller uses GNU screen, waits for the approved GPU, leaves unrelated
-work running, and charges all reserved time to the existing ledger.
+Each seed logs one W&B run. `model_name`, `task_name`, `seed`, `stage` and
+`recipe_id` are saved automatically. A null group derives a group shared by
+seeds using the same model recipe, dataset and stage. Set a group label if needed.
 
-Checkpoint selection and early stopping use validation only. Diagnostic test
-curves use a frozen recipe and stay separate from final evaluation. Resume
-checks source, environment, data, split, model, optimizer and compute contracts.
-Actual attention dispatch is saved; CPU fallback does not prove FlashAttention
-performance. Compilation is opt-in and remains part of run provenance.
+In W&B, group by `model_name` and `task_name`. Filter to the same `stage` and
+`recipe_id`, with `run_status: complete`. Compare the individual seeds or display
+mean and standard deviation. For paper results, include all distinct completed
+seeds and use final `test/*` values from validation-selected checkpoints.
+`diagnostic/test/*` and `selected/diagnostic/test/*` remain diagnostic.
 
-Reporting rechecks saved selections, predictions, exact test membership and
-metrics. `results.json` retains individual seeds, evidence hashes and blocked
-cells. `paper_tables.csv` and `paper_tables.tex` contain only complete seed
-groups. Use those measured tables to update the paper. Synthetic checks,
-engineering smoke tests and historical scores never fill missing cells.
+Pretraining logs loss, raw MSE, Soft DiCT loss, learning rate, gradient norm and
+validation MSE. Probes and evaluation log accuracy, balanced accuracy, AUROC,
+AUPRC and micro/macro F1. Multiclass evaluation also keeps weighted F1. Final
+evaluation logs a confusion matrix and preserves predictions locally.
+
+Online resume reuses the saved W&B run ID in `wandb.json`. Keep project and group
+unchanged. W&B performs grouping and aggregation; this repository has no study
+plan, controller, task registry or seed-summary job.

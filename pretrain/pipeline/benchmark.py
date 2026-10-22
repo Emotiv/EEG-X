@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pretrain.channel_identity import sha256_file
 from pretrain.pipeline.budget import Budget, BudgetStop
-from pretrain.pipeline.execution import available_gpu, gpu_snapshot
+from pretrain.gpu import available_gpu, gpu_snapshot
 from pretrain.metadata import atomic_json
 
 
@@ -134,7 +134,7 @@ def benchmark(
         raise ValueError("Invalid benchmark update count, warmup, or time limit")
     budget_root = Path(budget_root).resolve()
     if not (budget_root / "budget.json").is_file():
-        raise ValueError("Use the existing shared study budget; do not reset charged work")
+        raise ValueError("Use the existing shared GPU budget; do not reset charged work")
     _fixed_batch_size(config)
     uuid = available_gpu(gpu, allow_busy=True) if allow_busy else available_gpu(gpu)
     before = gpu_snapshot(gpu)
@@ -258,7 +258,7 @@ def main():
     parser.add_argument("--config")
     parser.add_argument("--manifest")
     parser.add_argument("--output", required=True)
-    parser.add_argument("--budget", help="Existing shared study ledger directory")
+    parser.add_argument("--budget", help="Existing shared GPU ledger directory")
     parser.add_argument("--gpu", type=int)
     parser.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"))
     parser.add_argument("--updates", type=int, default=5)

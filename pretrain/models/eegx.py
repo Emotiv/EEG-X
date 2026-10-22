@@ -156,8 +156,6 @@ class EEGXReconstruction(nn.Module):
         from pretrain.objectives import validate_objective
 
         width, depth, heads = config["width"], config["depth"], config.get("heads", 8)
-        if width not in (64, 128, 512) or depth not in (4, 8) or heads != 8:
-            raise ValueError("EEG-X geometry must belong to the accepted scaling grid")
         self.input_size = config["input_samples"]
         if self.input_size < 32 or self.input_size % 32:
             raise ValueError("Input duration must contain complete patches")
@@ -181,11 +179,7 @@ class EEGXReconstruction(nn.Module):
         objective = config.get("objective")
         validate_objective(objective)
         self.hydra_weight = objective["weight"] if objective else 0.0
-        self.hydra = (
-            None
-            if objective is None
-            else SoftDiCT(objective)
-        )
+        self.hydra = None if objective is None else SoftDiCT(objective)
         self.contract = {
             "name": "eegx_hybrid_reconstruction_v2",
             "width": width,

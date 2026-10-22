@@ -2,6 +2,8 @@
 
 Status: the user selected the proposal as the local default. The pipeline retains the EEG-X context encoder and trainable Predictor, with no teacher or EMA. See the [readiness review](training-review.md) for checks and remaining source requirements.
 
+Current execution uses one YAML configuration and one local command. Each invocation runs one selected model over the configured seed list, sequentially in fresh local processes on the selected GPU. Each seed saves its resolved settings, subject split, logs and checkpoints; input errors stop the loop. The repository has no SLURM integration, study plan, controller or seed-summary job. W&B records and groups independent seed runs.
+
 The [task log](task.md) records the selected defaults and fallbacks for author discussion. The [supplied-paper review](paper-review.md) supersedes the earlier arXiv comparison. The user approved the documented local differences; this does not mean that every setting appears in the manuscript or has separate author approval.
 
 ## Goal and fixed requirements
@@ -11,7 +13,6 @@ Reproduce the evaluation pipeline and regenerate EEG-X paper results on consiste
 | Component | Required configuration |
 |---|---|
 | Primary model | Encoder depth 8, embedding width 64, attention heads 8 |
-| Scaling grid | Encoder depths 4/8; embedding widths 64/128/512; attention heads 8; primary model runs first |
 | Tokenizer | Combined raw patches and STFT magnitude |
 | Patch length | 32 samples |
 | Decoder | 4 Transformer layers, 8 attention heads |
@@ -25,7 +26,7 @@ Reproduce the evaluation pipeline and regenerate EEG-X paper results on consiste
 | Attention backend | FlashAttention where supported; record the actual backend and any fallback |
 | Optimizer and scheduler | StableAdamW pretraining; AdamW fine-tuning; warmup/cosine for both; save actual resolved settings |
 
-Use the current EEG-X model as the implementation base. Keep its active reconstruction path unless the agreed configuration requires a change. Complete the primary model before scaling. Other public models are optional after the EEG-X results; old baseline rows remain historical until rerun on the new splits.
+Use the current EEG-X model as the implementation base. Keep its active reconstruction path unless the agreed configuration requires a change. Train only the selected configuration. Old baseline rows remain historical until rerun on the new splits.
 
 ## Data and subject splits
 
@@ -60,6 +61,8 @@ Each in-domain model starts from scratch. Each cross-domain classifier uses the 
 | Duplicate policy | Reconcile duplicates and retained counts with the processed release before freezing exclusions; document exclusions before freezing the new datasets |
 
 New split manifests must be immutable and versioned. Missing participant or label evidence blocks the affected task.
+
+Publish prepared manifests only after all source-specific evidence and metadata are finalized. Missing source evidence raises an input error. Retry after supplying the evidence; no persistent task state is created.
 
 ## Target model flow
 
@@ -103,7 +106,7 @@ Both tokenizer branches describe the same channel and time patch. The revised pa
 | Feature pooling | Mean patch tokens |
 | Teacher and latent losses | Retain the existing one-layer cross-attention Predictor in the active reconstruction path. Omit the unused teacher target computation. Add the required four-layer Transformer decoder before the per-patch raw waveform projection; add no latent objective |
 
-These are selected implementation choices, not additional parameters supplied by Navid. Train new models from scratch; support for historical checkpoints is outside scope. Versioned checkpoints record the selected model and objective for integrity and reproducible resume. Create fresh studies and carry the existing budget ledger forward.
+These are selected implementation choices, not additional parameters supplied by Navid. Train new models from scratch; support for historical checkpoints is outside scope. Versioned checkpoints record the selected model and objective for integrity and reproducible resume. Use fresh output directories and carry the existing budget ledger forward.
 
 ### Soft DiCT objective
 
@@ -132,7 +135,7 @@ Compare the reconstructed waveform with a detached target. Keep the feature tran
 
 Pin these choices before inspecting test curves. If test feedback guides a change, treat that split as development data and obtain a fresh untouched holdout for the paper.
 
-## Metrics and regenerated tables
+## Metrics and W&B results
 
 | Output | Contract |
 |---|---|
@@ -141,41 +144,41 @@ Pin these choices before inspecting test curves. If test feedback guides a chang
 | Reporting unit | Pool windows across held-out subjects; do not average subject scores |
 | Scale | Classification metrics 0-1, higher is better; reconstruction MSE lower is better |
 | Repeated runs | Publish each seed; mean and sample standard deviation only after all 5 seeds complete |
-| Final evaluation | Use validation-selected checkpoints and a fixed classifier recipe; keep diagnostic curves separate from final table entries |
+| Final evaluation | Use validation-selected checkpoints and a fixed classifier recipe; keep diagnostic curves separate from final test metrics |
+| W&B | Log model name, task name, stage, recipe and seed; online resume reuses the saved run ID |
+| Grouping | W&B groups by model and task; filter to one stage and recipe and include distinct completed seeds |
 
 Balanced accuracy is mean recall across classes. Report the architecture, split, seed, and evaluation mode beside every result.
 
-| Planned scope, including blocked tasks | Pretraining | In-domain fine-tuning | Cross-domain frozen classifiers |
+| Paper scope, subject to source availability | Pretraining | In-domain fine-tuning | Cross-domain frozen classifiers |
 |---|---:|---:|---:|
 | Primary architecture: depth 8, width 64 | 20 | 20 | 15 |
-| Remaining 5 scaling architectures | 100 | 100 | 75 |
-| Full 6-architecture grid | 120 | 120 | 90 |
 
-These are planned runs, not completed results. Missing data or budget limits must remain explicit in the tables.
+These counts describe paper scope, not a scheduled job matrix or completed results. Missing data and budget limits remain explicit.
 
 ## Work required before paper runs
 
 - [ ] Audit the processed release, recover true participant IDs, verify labels, preprocessing, and non-rASR source history, and reconcile duplicate counts.
 - [ ] Generate and save the independent split bank; test subject separation and class coverage.
-- [x] Resolve teacher/latent scope; implement the hybrid tokenizer, primary model, scaling configurations, and actual attention-backend reporting.
+- [x] Resolve teacher/latent scope; implement the hybrid tokenizer, primary model, and actual attention-backend reporting.
 - [x] Add early stopping, the revised fine-tuning horizon, classifier-only cross-domain evaluation, and diagnostic probe logging.
 - [ ] Pin complete optimizer/scheduler and tokenizer configurations; save tokenizer, encoder, classifier, scaler, and random states.
 - [ ] Test masking without STFT leakage, gradients, input/channel variants, checkpoint round trips, exact resume, and selection without test feedback.
 - [ ] Review code against this contract, fix findings, then pass real-data CPU and GPU checks before full training.
-- [ ] Complete the primary model across eligible datasets and seeds, regenerate tables, then use remaining budget for scaling and optional baselines.
+- [ ] Complete the primary model across eligible datasets and seeds and record their final W&B test metrics.
 
 Implementation and checks must live in this repository. Keep failed and incomplete runs visible.
 
 | Execution and reproducibility | Contract |
 |---|---|
 | Shared GPU budget | 72 GPU-hours across all local experiments and revised runs; carry the existing ledger without resetting it |
-| Setup accounting | Charge 300 seconds once when creating a new study ledger; preserve existing ledgers without a second setup debit |
+| Setup accounting | Charge 300 seconds once when creating a new budget ledger; preserve existing ledgers without a second setup debit |
 | Device | Physical GPU 1 for paper studies; user-requested bounded training checks may select physical GPU 0 with explicit shared mode; never stop unrelated workloads |
 | Storage | Work volume for code, environment, caches, data, and outputs; retain the home compatibility symlink |
-| Isolation | Fresh output and screen session per experiment; preserve safe progress on stop |
+| Isolation | Fresh output per direct YAML run; preserve safe progress on stop |
 | Frozen evidence | Source revision, uv lockfile, resolved configuration, preprocessing, channel vocabulary, participant splits, data hashes, checkpoints, predictions, metrics, and exclusions |
 | Resume | Reject changed model, tokenizer, data, split, objective, optimizer, scheduler, random-state, or compute contracts |
 | Code-speed comparison | Fix logical and physical batch sizes; use one physical batch per update without gradient accumulation; hold data order, precision, hardware, warmup, and measured update count fixed. Treat larger microbatches as separate capacity tuning |
 | Publication | Replace EEG-X table entries only with measured revised-run results; mark old-split baselines as historical until rerun |
 
-The implementation remains local. Completed experiments supply verified per-seed predictions and CSV/LaTeX tables. Missing source evidence and unavailable GPU capacity remain explicit; pilot and synthetic checks cannot supply paper scores.
+The implementation remains local. Completed experiments supply verified per-seed predictions and W&B metrics. Aggregation happens in W&B. Missing source evidence and unavailable GPU capacity remain explicit; pilot and synthetic checks cannot supply paper scores.

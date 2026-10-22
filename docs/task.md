@@ -6,9 +6,14 @@ for author discussion; it does not require another approval before engineering w
 The paper column describes the supplied manuscript, independently of author code
 and our implementation choices. Unspecified details are marked explicitly.
 
+The current execution request is direct EEG-X training from one YAML file.
+Each invocation selects one model and a seed list. Seeds run sequentially on the
+local machine, with independent splits, outputs and W&B runs. Automatic model-size sweeps and their grid have been
+removed. Study planning and orchestration have been removed; W&B groups the independent seed runs.
+
 | Point | Paper | Selected default | Fallback |
 |---|---|---|---|
-| Model | C.1: encoder 8, decoder 4, heads 8. Table 8: widths 64/128/512, depths 4/8. | Main width 64/depth 8 first; scaling depths 4/8 and widths 64/128/512 | Corrected author table |
+| Model | C.1: encoder 8, decoder 4, heads 8. Table 8: widths 64/128/512, depths 4/8. | Train width 64/depth 8 only; no automatic model-size sweep | Corrected author table |
 | Normalization | Normalization type and Q/K normalization not mentioned. | RMSNorm + QK normalization + FlashAttention | Author-code LayerNorm; keep FlashAttention |
 | Masking | Section 2: MAE encoder sees visible tokens; decoder reconstructs masked regions. Sampler and ratio not mentioned; SSP not mentioned. | Reproducible random-token masking, 75% | Your preferred sampler/ratio |
 | DiCT | Section 2.3: argmax winner counts. B.3: G=8, K=32; kernels 9/15; dilations 1/2/4/8/16. Soft routing not mentioned. | Soft routing; preserve paper dictionary | Your corrected soft DiCT |
@@ -70,14 +75,13 @@ Work sequence:
 - [x] Check retained EEG-X2 spatial encoding and current teacher behavior.
 - [x] Save resolved settings and verify interrupted-run checkpoint integrity.
 - [x] Apply the user-selected defaults and update the detailed specification.
-- [x] Wire the versioned defaults through planning, training, checkpoints, and exports.
+- [x] Wire the versioned defaults through YAML training, checkpoints, and exports.
 - [x] Check real EEG pretraining, fine-tuning, frozen evaluation, and encoder export/reload.
 - [ ] Verify source/target provenance, labels, subjects, and duplicates.
 - [ ] Freeze source revision, environment, split bank, and experiment settings.
 - [ ] Run the primary model and regenerate prediction-backed paper tables.
-- [ ] Run scaling and optional baselines if budget permits.
 
 The [paper review](paper-review.md) records manuscript evidence. Train from scratch
-in fresh studies; historical checkpoint compatibility is outside scope. Save new
+in fresh output directories; historical checkpoint compatibility is outside scope. Save new
 checkpoints for reproducible resume and keep the existing shared budget ledger.
 Keep all work local until publication is explicitly requested.

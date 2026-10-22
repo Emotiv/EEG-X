@@ -48,15 +48,17 @@ def predictions(model, view, config, device, budget):
     return np.concatenate(labels), np.concatenate(values), identities
 
 
-def learning_rate(progress, epochs, warmup=5):
+def learning_rate(progress, epochs, warmup=5, *, peak_lr=PEAK_LR, minimum_lr=MINIMUM_LR):
     warmup = min(warmup, max(0, epochs - 1))
     if warmup and progress <= warmup:
-        return PEAK_LR * progress / warmup
+        return peak_lr * progress / warmup
     ratio = min(1.0, (progress - warmup) / max(1, epochs - warmup))
-    return MINIMUM_LR + (PEAK_LR - MINIMUM_LR) * (1 + math.cos(math.pi * ratio)) / 2
+    return minimum_lr + (peak_lr - minimum_lr) * (1 + math.cos(math.pi * ratio)) / 2
 
 
-def run(config, manifest, checkpoint, output, *, device="cpu", budget=None, resume=None):
+def run(
+    config, manifest, checkpoint, output, *, device="cpu", budget=None, resume=None, tracker=None
+):
     for key in ("epochs", "logical_batch", "microbatch"):
         if type(config.get(key)) is not int or config[key] < 1:
             raise ValueError(f"Positive integer required: {key}")
@@ -73,12 +75,27 @@ def run(config, manifest, checkpoint, output, *, device="cpu", budget=None, resu
 
     validate_run_dataset(config, train.metadata)
     config = copy.deepcopy(config)
+    settings = {
+        "lr": PEAK_LR,
+        "betas": [0.9, 0.999],
+        "eps": 1e-8,
+        "weight_decay": 0.01,
+        **config.get("optimizer", {}),
+    }
+    minimum_lr = config.get("scheduler", {}).get("minimum_lr", MINIMUM_LR)
+    clip_norm = config.get("gradient_clip_norm", GRADIENT_CLIP_NORM)
     config["pretraining_checkpoint_sha256"] = sha256_file(checkpoint)
     provenance = contract(config, train.metadata, device=device)
     model, _ = classifier(checkpoint, len(train.metadata["classes"]), config["seed"])
     model.to(device)
     groups, audit = optimizer_groups(model)
-    optimizer = torch.optim.AdamW(groups, lr=PEAK_LR, betas=(0.9, 0.999))
+    for group, record in zip(groups, audit):
+        group["lr"] = settings["lr"] * group["lr_scale"]
+        group["weight_decay"] = settings["weight_decay"] if group["weight_decay"] else 0.0
+        record["weight_decay"] = group["weight_decay"]
+    optimizer = torch.optim.AdamW(
+        groups, lr=settings["lr"], betas=tuple(settings["betas"]), eps=settings["eps"]
+    )
     state = {
         "epoch": 0,
         "cursor": 0,
@@ -97,12 +114,12 @@ def run(config, manifest, checkpoint, output, *, device="cpu", budget=None, resu
                 "optimizer": optimizer_settings(optimizer),
                 "scheduler": {
                     "name": "warmup_cosine",
-                    "peak_lr": PEAK_LR,
-                    "minimum_lr": MINIMUM_LR,
+                    "peak_lr": settings["lr"],
+                    "minimum_lr": minimum_lr,
                     "warmup_epochs": warmup,
                     "epochs": config["epochs"],
                 },
-                "gradient_clip_norm": GRADIENT_CLIP_NORM,
+                "gradient_clip_norm": clip_norm,
                 "classifier": {
                     "normalization": type(model.head[0]).__name__,
                     "dropout": model.head[1].p,
@@ -139,7 +156,11 @@ def run(config, manifest, checkpoint, output, *, device="cpu", budget=None, resu
                     budget.check()
                     optimizer.zero_grad(set_to_none=True)
                     rate = learning_rate(
-                        epoch + (index + 1) / len(loader), config["epochs"], warmup=warmup
+                        epoch + (index + 1) / len(loader),
+                        config["epochs"],
+                        warmup=warmup,
+                        peak_lr=settings["lr"],
+                        minimum_lr=minimum_lr,
                     )
                     for group in optimizer.param_groups:
                         group["lr"] = rate * group["lr_scale"]
@@ -159,7 +180,7 @@ def run(config, manifest, checkpoint, output, *, device="cpu", budget=None, resu
                         totals.add(len(eeg), loss)
                     total_loss = totals.sums()[0]
                     torch.nn.utils.clip_grad_norm_(
-                        model.parameters(), GRADIENT_CLIP_NORM, error_if_nonfinite=True
+                        model.parameters(), clip_norm, error_if_nonfinite=True
                     )
                     optimizer.step()
                     state["cursor"] = index + 1
@@ -168,6 +189,14 @@ def run(config, manifest, checkpoint, output, *, device="cpu", budget=None, resu
                 save(output / "last.pth", snapshot(model, optimizer, state, provenance))
                 labels, probabilities, _ = predictions(model, validation, config, device, budget)
                 scores = classification(labels, probabilities)
+                if tracker:
+                    tracker.log(
+                        {
+                            "epoch": epoch + 1,
+                            "train/loss": state["epoch_loss"] / state["epoch_samples"],
+                            **{f"val/{key}": value for key, value in scores.items()},
+                        }
+                    )
                 state["history"].append(
                     {
                         "epoch": epoch + 1,
@@ -213,6 +242,20 @@ def run(config, manifest, checkpoint, output, *, device="cpu", budget=None, resu
             test = Windows(manifest, "test")
             labels, probabilities, identities = predictions(model, test, config, device, budget)
             scores = classification(labels, probabilities)
+            if tracker:
+                tracker.log(
+                    {
+                        "epoch": state["epoch"],
+                        **{f"test/{key}": value for key, value in scores.items()},
+                    }
+                )
+                tracker.summary(
+                    {
+                        "selected/epoch": best["epoch"],
+                        **{f"test/{key}": value for key, value in scores.items()},
+                    }
+                )
+                tracker.confusion(labels, probabilities)
             atomic_json(output / "attention.json", attention_backends(model))
             np.savez_compressed(
                 output / "test_predictions.npz",

@@ -1,7 +1,6 @@
 # Revised EEG-X reproduction
 
-Use `python -m pretrain` with the local uv environment. The compatibility
-command `Main.py paper` enters the same pipeline.
+Use `python Main.py --config configs/eegx.yaml` with the local uv environment.
 The model reuses the EEG-X context encoder and active Predictor. Its hybrid
 tokenizer, objective and decoder follow the accepted specification. These are
 revised experiments; their outputs must be measured before paper tables change.
@@ -55,24 +54,29 @@ Keep the cited evidence with the dataset. A local `rasr=False` flag cannot
 replace upstream history. Native preparation can accept the same evidence
 through `python -m pretrain.pipeline.prepare --source-evidence HISTORY`.
 
-## Plan, run and resume
+## Run and resume
 
-The datasets JSON maps each task to `{"manifest": "/absolute/manifest.json"}`
-or `{"blocked": "the missing evidence"}`. Plan into a fresh study directory.
-Pass `--budget` pointing to the existing shared ledger. Its usage is preserved.
-The production device and scientific matrix are fixed by the specification.
+Edit the YAML manifest and output paths, then run
+`python Main.py --config configs/eegx.yaml`. Paths resolve beside the YAML file.
+Use a seeds list to run independent seeds sequentially on the local machine.
+Each seed gets a fresh process, subject split, output directory and W&B run.
+The `stage` selects pretraining, fine-tuning or frozen evaluation. Downstream
+stages require a pretraining checkpoint. Missing evidence exits directly.
 
-The controller checks software and dataset fingerprints before execution.
-Each experiment uses a separate screen session and fresh output directory.
-Rerun the controller after a safe budget stop to resume from an optimizer
-boundary. Code, environment, data or contract changes require a distinct study;
-carry the same budget ledger forward. Failed jobs stay visible for investigation.
+The output saves resolved YAML, split, training history, checkpoints and evaluation
+predictions for each seed. To resume one seed, replace the list with a scalar seed,
+set `resume` to its previous `training/last.pth` and choose a fresh output.
+Batch checkpoint/resume paths use `{seed}` to identify the matching file.
+Reuse the same data and training settings. CUDA runs
+carry the existing shared GPU ledger; CPU checks use FP32.
 
-## Paper values
+## W&B results
 
-Run `python -m pretrain report --study DIRECTORY`. The report recomputes metrics from
-saved predictions and checks test membership and selected artifacts. Individual
-seeds remain in `results.json`. Only complete seed groups enter
-`paper_tables.csv` and `paper_tables.tex`. Diagnostic curves are separate and
-cannot select checkpoints or configurations. Preserve revised and historical
-table labels until all required comparisons have been rerun.
+Enable W&B in YAML to log model name, task name, seed, stage, recipe and metrics.
+Online resume reuses the saved run ID. Local checkpoints remain authoritative.
+Group by model and task in W&B, filtering to one stage and recipe. Include only
+distinct completed seeds when computing paper averages. Final test metrics follow
+validation-selected checkpoints. Diagnostic curves cannot guide selection.
+
+Results remain per-seed records. W&B handles aggregation; the repository does
+not build a study plan or generate seed-summary tables.

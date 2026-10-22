@@ -9,7 +9,7 @@ from pretrain.pipeline.preprocessing import profile
 from pretrain.pipeline.processed import prepare
 
 
-def test_processed_release_keeps_values_and_freezes_source_evidence(tmp_path):
+def release_contract(tmp_path):
     values = np.random.default_rng(4).normal(size=(40, 2, 256)).astype("float32")
     artifact = tmp_path / "release.npy"
     np.save(
@@ -43,6 +43,11 @@ def test_processed_release_keeps_values_and_freezes_source_evidence(tmp_path):
     }
     path = tmp_path / "contract.json"
     path.write_text(json.dumps(contract))
+    return path, values, evidence, contract
+
+
+def test_processed_release_keeps_values_and_freezes_source_evidence(tmp_path):
+    path, values, evidence, contract = release_contract(tmp_path)
     prepared = tmp_path / "prepared"
     metadata = prepare(path, prepared)
     np.testing.assert_array_equal(np.load(prepared / "record-000000.npy"), values[0])
@@ -59,3 +64,22 @@ def test_processed_release_keeps_values_and_freezes_source_evidence(tmp_path):
     path.write_text(json.dumps(contract))
     with pytest.raises(ValueError, match="preprocessing is incompatible"):
         prepare(path, tmp_path / "invalid")
+
+
+def test_preparation_publishes_only_the_complete_manifest(tmp_path, monkeypatch):
+    from pretrain.pipeline import processed
+    from pretrain.pipeline.splits import require_paper_source
+
+    path, _, _, _ = release_contract(tmp_path)
+    prepared = tmp_path / "prepared"
+    attach = processed.attach_source_evidence
+    observed = []
+
+    def observe_during_preparation(metadata, evidence):
+        observed.append((prepared / "manifest.json").exists())
+        return attach(metadata, evidence)
+
+    monkeypatch.setattr(processed, "attach_source_evidence", observe_during_preparation)
+    prepare(path, prepared)
+    assert observed == [False]
+    require_paper_source(Windows(prepared / "manifest.json", "train").metadata)

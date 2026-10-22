@@ -24,6 +24,15 @@ INDEX_DTYPE = np.dtype(
     ]
 )
 SPLITS = {"train": 0, "validation": 1, "test": 2}
+TASK_WINDOWS = {
+    "dreamer_arousal": 256,
+    "stew": 256,
+    "tuab": 1280,
+    "tuev_binary": 256,
+    "crowdsourced": 256,
+    "bciciv_2a": 512,
+    "kalunga": 256,
+}
 
 
 def batches(view, *, batch_size, seed, workers=0, pin_memory=False, shuffle=True):
@@ -160,7 +169,8 @@ class PreparedWriter:
         self.records.append(record)
         self.events.extend(accepted)
 
-    def finish(self, *, seed=241):
+    def finish(self, *, seed=241, finalize=None):
+        """Publish the manifest once, after source-specific finalization succeeds."""
         if not self.events:
             raise ValueError("No eligible windows")
         groups = {}
@@ -226,6 +236,9 @@ class PreparedWriter:
                 name: int((index["split"] == split).sum()) for name, split in SPLITS.items()
             },
         }
+        if finalize is not None:
+            metadata = finalize(metadata)
+        metadata.pop("fingerprint", None)
         metadata["fingerprint"] = fingerprint(metadata)
         atomic_json(self.root / "manifest.json", metadata)
         return metadata

@@ -5,12 +5,11 @@ from __future__ import annotations
 import copy
 import math
 from pathlib import Path
-from types import SimpleNamespace
 
 import torch
 
 from pretrain.compute import configure_compute, autocast_context as context
-from pretrain.optimizer_factory import build_optimizer
+from pretrain.optimizers.stable_adamw import StableAdamW
 from pretrain.pipeline.budget import BudgetStop, NoGpuBudget
 from pretrain.pipeline.checkpoint import (
     contract,
@@ -34,25 +33,112 @@ from pretrain.metadata import atomic_json
 PEAK_LR = 2.4e-4
 MINIMUM_LR = 1e-5
 GRADIENT_CLIP_NORM = 5.0
+DEFAULT_OPTIMIZER = {
+    "lr": PEAK_LR,
+    "betas": [0.9, 0.95],
+    "eps": 1e-9,
+    "weight_decay": 0.01,
+}
+DEFAULT_SCHEDULER = {"minimum_lr": MINIMUM_LR}
 
 
-def optimizer_for(model):
-    return build_optimizer(
-        model,
-        SimpleNamespace(
-            optimizer="stable_adamw",
-            lr=PEAK_LR,
-            adamw_beta1=0.9,
-            adamw_beta2=0.95,
-            adamw_eps=1e-9,
-            weight_decay=0.01,
-        ),
+def resolve_training_config(config):
+    """Resolve the training recipe selected by one YAML configuration."""
+    resolved = resolve_model_config(
+        {
+            "seed": 241,
+            "epochs": 100,
+            "warmup_epochs": 10,
+            "precision": "bf16",
+            "logical_batch": 256,
+            "microbatch": 16,
+            "workers": 2,
+            "probe_interval": 0,
+            "diagnostic_test_probes": True,
+            "gradient_clip_norm": GRADIENT_CLIP_NORM,
+            **copy.deepcopy(config),
+        }
+    )
+    for name, defaults in (("optimizer", DEFAULT_OPTIMIZER), ("scheduler", DEFAULT_SCHEDULER)):
+        supplied = resolved.get(name, {})
+        if not isinstance(supplied, dict) or supplied.keys() - defaults.keys():
+            raise ValueError(f"Unknown {name} settings; expected {', '.join(defaults)}")
+        resolved[name] = {**copy.deepcopy(defaults), **supplied}
+    optimizer = resolved["optimizer"]
+    for name, value in (
+        ("optimizer.lr", optimizer["lr"]),
+        ("optimizer.eps", optimizer["eps"]),
+        ("gradient_clip_norm", resolved["gradient_clip_norm"]),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value <= 0
+        ):
+            raise ValueError(f"{name} must be a positive finite number")
+    for name, value in (
+        ("optimizer.weight_decay", optimizer["weight_decay"]),
+        ("scheduler.minimum_lr", resolved["scheduler"]["minimum_lr"]),
+    ):
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or value < 0
+        ):
+            raise ValueError(f"{name} must be a nonnegative finite number")
+    betas = optimizer["betas"]
+    if (
+        not isinstance(betas, (list, tuple))
+        or len(betas) != 2
+        or any(
+            isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value < 1
+            for value in betas
+        )
+    ):
+        raise ValueError("optimizer.betas must contain two numbers in [0, 1)")
+    if resolved["scheduler"]["minimum_lr"] > optimizer["lr"]:
+        raise ValueError("scheduler.minimum_lr cannot exceed optimizer.lr")
+    for name in (
+        "seed",
+        "epochs",
+        "warmup_epochs",
+        "logical_batch",
+        "microbatch",
+        "workers",
+        "probe_interval",
+    ):
+        minimum = 1 if name in {"epochs", "logical_batch", "microbatch"} else 0
+        if type(resolved[name]) is not int or resolved[name] < minimum:
+            raise ValueError(f"Invalid training setting: {name}")
+    return resolved
+
+
+def optimizer_for(model, settings=None):
+    settings = settings or DEFAULT_OPTIMIZER
+    return StableAdamW(
+        [parameter for parameter in model.parameters() if parameter.requires_grad],
+        lr=settings["lr"],
+        betas=tuple(settings["betas"]),
+        eps=settings["eps"],
+        weight_decay=settings["weight_decay"],
+        return_norms=True,
     )
 
 
-def schedule(epoch, batch, batches, epochs, *, warmup_epochs=10):
+def schedule(
+    epoch,
+    batch,
+    batches,
+    epochs,
+    *,
+    warmup_epochs=10,
+    peak_lr=PEAK_LR,
+    minimum_lr=MINIMUM_LR,
+):
     """Single warmup and cosine schedule; optimizer state never restarts."""
-    peak, minimum = PEAK_LR, MINIMUM_LR
+    peak, minimum = peak_lr, minimum_lr
     progress = epoch + (batch + 1) / batches
     if epoch < warmup_epochs:
         return peak * progress / max(1, warmup_epochs)
@@ -84,8 +170,8 @@ def validation_loss(model, view, config, device, budget):
     return numerator / count
 
 
-def run(config, manifest, output, *, device="cpu", budget=None, resume=None):
-    config = resolve_model_config(config)
+def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tracker=None):
+    config = resolve_training_config(config)
     budget = budget or NoGpuBudget()
     device = torch.device(device)
     output = Path(output)
@@ -120,7 +206,7 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None):
     model = create_model(config).to(device)
     if config.get("compile", False):
         model.compile()
-    optimizer = optimizer_for(model)
+    optimizer = optimizer_for(model, config["optimizer"])
     warmup = min(config.get("warmup_epochs", 10), max(0, config["epochs"] - 1))
     atomic_json(
         output / "run.json",
@@ -135,12 +221,12 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None):
                 "optimizer": optimizer_settings(optimizer),
                 "scheduler": {
                     "name": "warmup_cosine",
-                    "peak_lr": PEAK_LR,
-                    "minimum_lr": MINIMUM_LR,
+                    "peak_lr": config["optimizer"]["lr"],
+                    "minimum_lr": config["scheduler"]["minimum_lr"],
                     "warmup_epochs": warmup,
                     "epochs": config["epochs"],
                 },
-                "gradient_clip_norm": GRADIENT_CLIP_NORM,
+                "gradient_clip_norm": config["gradient_clip_norm"],
             },
         },
     )
@@ -170,7 +256,14 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None):
                 from pretrain.pipeline.probes import probe
 
                 probe(
-                    model.encoder, manifest, config, output, state["pending_probe"], device, budget
+                    model.encoder,
+                    manifest,
+                    config,
+                    output,
+                    state["pending_probe"],
+                    device,
+                    budget,
+                    tracker=tracker,
                 )
                 state["pending_probe"] = None
                 save(output / "last.pth", snapshot(model, optimizer, state, provenance))
@@ -191,7 +284,13 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None):
                     budget.check()
                     optimizer.zero_grad(set_to_none=True)
                     rate = schedule(
-                        epoch, index, len(loader), config["epochs"], warmup_epochs=warmup
+                        epoch,
+                        index,
+                        len(loader),
+                        config["epochs"],
+                        warmup_epochs=warmup,
+                        peak_lr=config["optimizer"]["lr"],
+                        minimum_lr=config["scheduler"]["minimum_lr"],
                     )
                     for group in optimizer.param_groups:
                         group["lr"] = rate
@@ -222,7 +321,7 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None):
                         )
                     loss_sum, mae_sum, hydra_sum = totals.sums()
                     norm = torch.nn.utils.clip_grad_norm_(
-                        model.parameters(), GRADIENT_CLIP_NORM, error_if_nonfinite=True
+                        model.parameters(), config["gradient_clip_norm"], error_if_nonfinite=True
                     )
                     optimizer.step()
                     state["cursor"] = index + 1
@@ -230,6 +329,17 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None):
                     state["epoch_samples"] += total
                     state["epoch_mae"] += mae_sum
                     state["epoch_hydra"] += hydra_sum
+                    if tracker:
+                        tracker.log(
+                            {
+                                "epoch": epoch + (index + 1) / len(loader),
+                                "train/loss": loss_sum / total,
+                                "train/raw_mse": mae_sum / total,
+                                "train/soft_dict": hydra_sum / total,
+                                "train/lr": rate,
+                                "train/grad_norm": float(norm),
+                            }
+                        )
                     print(
                         f"epoch={epoch + 1} update={index + 1}/{len(loader)} loss={loss_sum / total:.6f} "
                         f"lr={rate:.8g} grad_norm={float(norm):.5g}",
@@ -257,6 +367,8 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None):
                     "validation_mse": val,
                 }
                 state["history"].append(row)
+                if tracker:
+                    tracker.log({"epoch": epoch + 1, "val/raw_mse": val})
                 if state["best_loss"] is None or val < state["best_loss"]:
                     state["best_loss"] = val
                     save(output / "best.pth", model_weights(model, config, provenance))
@@ -303,7 +415,16 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None):
                 if state["pending_probe"] is not None:
                     from pretrain.pipeline.probes import probe
 
-                    probe(model.encoder, manifest, config, output, epoch + 1, device, budget)
+                    probe(
+                        model.encoder,
+                        manifest,
+                        config,
+                        output,
+                        epoch + 1,
+                        device,
+                        budget,
+                        tracker=tracker,
+                    )
                     state["pending_probe"] = None
                     save(output / "last.pth", snapshot(model, optimizer, state, provenance))
                 if state["bad_epochs"] >= stopping["patience"]:
@@ -319,7 +440,9 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None):
         selected = torch.load(output / "best.pth", map_location="cpu", weights_only=True)
         model.load_state_dict(selected["model"])
         try:
-            probe(model.encoder, manifest, config, output, "selected", device, budget)
+            probe(
+                model.encoder, manifest, config, output, "selected", device, budget, tracker=tracker
+            )
         except BudgetStop:
             # last.pth owns the final training state and optimizer. Keep that
             # pair intact after loading the validation-selected weights above.
@@ -338,4 +461,8 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None):
         },
     )
     write_history(output / "history.jsonl", state["history"])
+    if tracker:
+        tracker.summary(
+            {"selected/validation_mse": state["best_loss"], "completed_epochs": state["epoch"]}
+        )
     return output / "best.pth"
