@@ -207,8 +207,10 @@ Implementation and checks must live in this repository. Keep failed and incomple
 |---|---|
 | Shared GPU budget | 72 GPU-hours across all local experiments and revised runs; carry the existing ledger without resetting it |
 | Setup accounting | Charge 300 seconds once when creating a new budget ledger; preserve existing ledgers without a second setup debit |
-| Device | Physical GPU 1 for paper studies; user-requested bounded training checks may select physical GPU 0 with explicit shared mode; never stop unrelated workloads |
-| Concurrent tasks | User-selected four dataset pipelines on physical GPU 1; seeds stay sequential within each pipeline. Explicit shared mode and concurrent_gpu_runs: 4 admit four leases. Charge occupied time once for the single GPU, retaining all earlier usage |
+| Device | User-selected paper expansion uses physical GPUs 0 and 1 in explicit shared mode; never stop unrelated workloads |
+| Concurrent tasks | Four pipelines per device. GPU 1 owns seeds 241/242/243; GPU 0 owns 244/245 and the single shared TUAB source. Preserve checkpoint progress, verify completed tasks and lock each output against duplicate dispatch |
+| Aggregate accounting | Keep the original ledger and prior usage. GPU 0 has an auxiliary usage meter, not a second allowance. Charge occupied time once per device, add only new meter debits, and stop study owners safely at the unchanged aggregate cap. Auxiliary configurations require the shared launcher |
+| Queue ownership | Never reparent live training processes. Transfer ownership through checkpoint resume into fresh attempts with the original W&B IDs and unchanged frozen source. Separate queue sessions prevent terminal hangup from bypassing cleanup. Gate GPU 0 on verified resumed GPU 1 IDs, and gate targets on successful source finalization |
 | Storage | Work volume for code, environment, caches, data, and outputs; retain the home compatibility symlink |
 | Isolation | Fresh output per direct YAML run; preserve safe progress on stop |
 | Frozen evidence | Source revision, uv lockfile, resolved configuration, preprocessing, channel vocabulary, participant splits, data hashes, checkpoints, predictions, metrics, and exclusions |
