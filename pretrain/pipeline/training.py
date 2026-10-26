@@ -14,7 +14,6 @@ from pretrain.pipeline.budget import BudgetStop, NoGpuBudget
 from pretrain.pipeline.checkpoint import (
     contract,
     load,
-    model_weights,
     optimizer_settings,
     restore_rng,
     save,
@@ -112,6 +111,11 @@ def resolve_training_config(config):
         minimum = 1 if name in {"epochs", "logical_batch", "microbatch"} else 0
         if type(resolved[name]) is not int or resolved[name] < minimum:
             raise ValueError(f"Invalid training setting: {name}")
+    scope = resolved.get("pretraining_scope", "subject_holdout")
+    if scope not in {"subject_holdout", "tuab_source"}:
+        raise ValueError("Unknown pretraining scope")
+    if scope == "tuab_source" and resolved["probe_interval"]:
+        raise ValueError("Shared TUAB pretraining does not run target diagnostic probes")
     return resolved
 
 
@@ -170,13 +174,13 @@ def validation_loss(model, view, config, device, budget):
     return numerator / count
 
 
-def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tracker=None):
+def run(config, dataset, output, *, device="cpu", budget=None, resume=None, tracker=None):
     config = resolve_training_config(config)
     budget = budget or NoGpuBudget()
     device = torch.device(device)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
-    train, validation = Windows(manifest, "train"), Windows(manifest, "validation")
+    train = Windows(dataset, "train")
     from pretrain.pipeline.splits import validate_run_dataset
 
     validate_run_dataset(config, train.metadata)
@@ -191,7 +195,9 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
     state = {
         "epoch": 0,
         "cursor": 0,
+        "global_step": 0,
         "best_loss": None,
+        "best_epoch": None,
         "stopping_best": None,
         "bad_epochs": 0,
         "pending_probe": None,
@@ -204,10 +210,15 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
     provenance = contract(config, train.metadata, device=device)
     set_seed(config["seed"])
     model = create_model(config).to(device)
+    if tracker:
+        tracker.parameters(model)
     if config.get("compile", False):
         model.compile()
     optimizer = optimizer_for(model, config["optimizer"])
     warmup = min(config.get("warmup_epochs", 10), max(0, config["epochs"] - 1))
+    from pretrain.pipeline.selection import checkpoint_selection
+
+    selection = checkpoint_selection(config, dataset, output, device, budget, tracker, warmup)
     atomic_json(
         output / "run.json",
         {
@@ -230,9 +241,6 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
             },
         },
     )
-    stopping = config.get("early_stopping", {"patience": 10, "min_delta": 1e-4})
-    if stopping["patience"] < 1 or stopping["min_delta"] < 0:
-        raise ValueError("Early stopping requires positive patience and nonnegative min_delta")
     if resume:
         payload = load(resume, provenance)
         model.load_state_dict(payload["model"])
@@ -243,10 +251,10 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
         from pretrain.pipeline.probes import carry_completed
 
         carry_completed(Path(resume), output)
-        previous_best = Path(resume).parent / "best.pth"
+        previous_best = Path(resume).parent / selection.filename
         if previous_best.exists():
             save(
-                output / "best.pth",
+                output / selection.filename,
                 torch.load(previous_best, map_location="cpu", weights_only=True),
             )
     with configure_compute(config, device) as effective_compute:
@@ -257,7 +265,7 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
 
                 probe(
                     model.encoder,
-                    manifest,
+                    dataset,
                     config,
                     output,
                     state["pending_probe"],
@@ -268,7 +276,7 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
                 state["pending_probe"] = None
                 save(output / "last.pth", snapshot(model, optimizer, state, provenance))
             for epoch in range(state["epoch"], config["epochs"]):
-                if state["bad_epochs"] >= stopping["patience"]:
+                if selection.should_stop(state):
                     break
                 loader = batches(
                     train,
@@ -324,6 +332,7 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
                         model.parameters(), config["gradient_clip_norm"], error_if_nonfinite=True
                     )
                     optimizer.step()
+                    state["global_step"] += 1
                     state["cursor"] = index + 1
                     state["epoch_numerator"] += loss_sum
                     state["epoch_samples"] += total
@@ -333,7 +342,8 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
                         tracker.log(
                             {
                                 "epoch": epoch + (index + 1) / len(loader),
-                                "train/loss": loss_sum / total,
+                                "trainer/global_step": state["global_step"],
+                                "train/loss_step": loss_sum / total,
                                 "train/raw_mse": mae_sum / total,
                                 "train/soft_dict": hydra_sum / total,
                                 "train/lr": rate,
@@ -347,39 +357,17 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
                     )
                 # Save completed optimizer progress before validation can exhaust the budget.
                 save(output / "last.pth", snapshot(model, optimizer, state, provenance))
-                val = validation_loss(model, validation, config, device, budget)
-                if (epoch + 1) % 10 == 0:
-                    from pretrain.pipeline.examples import save as save_examples
-
-                    save_examples(
-                        model,
-                        validation,
-                        config,
-                        device,
-                        budget,
-                        output / f"validation-examples-{epoch + 1:04d}.npz",
-                    )
+                selected_metrics = selection.observe(model, state, provenance, epoch + 1)
                 row = {
                     "epoch": epoch + 1,
                     "train_loss": state["epoch_numerator"] / state["epoch_samples"],
                     "mae_loss": state["epoch_mae"] / state["epoch_samples"],
                     "hydra_loss": state["epoch_hydra"] / state["epoch_samples"],
-                    "validation_mse": val,
+                    **selected_metrics,
                 }
                 state["history"].append(row)
                 if tracker:
-                    tracker.log({"epoch": epoch + 1, "val/raw_mse": val})
-                if state["best_loss"] is None or val < state["best_loss"]:
-                    state["best_loss"] = val
-                    save(output / "best.pth", model_weights(model, config, provenance))
-                if (
-                    state["stopping_best"] is None
-                    or val < state["stopping_best"] - stopping["min_delta"]
-                ):
-                    state["stopping_best"] = val
-                    state["bad_epochs"] = 0
-                elif epoch + 1 > warmup:
-                    state["bad_epochs"] += 1
+                    tracker.log({"epoch": epoch + 1, "train/loss_epoch": row["train_loss"]})
                 if (epoch + 1) % 10 == 0:
                     save(
                         output / f"encoder-{epoch + 1:04d}.pth",
@@ -417,7 +405,7 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
 
                     probe(
                         model.encoder,
-                        manifest,
+                        dataset,
                         config,
                         output,
                         epoch + 1,
@@ -427,7 +415,7 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
                     )
                     state["pending_probe"] = None
                     save(output / "last.pth", snapshot(model, optimizer, state, provenance))
-                if state["bad_epochs"] >= stopping["patience"]:
+                if selection.should_stop(state):
                     break
         except BudgetStop:
             atomic_json(output / "attention.json", attention_backends(model))
@@ -437,11 +425,11 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
     if config.get("probe_interval", 0):
         from pretrain.pipeline.probes import probe
 
-        selected = torch.load(output / "best.pth", map_location="cpu", weights_only=True)
+        selected = torch.load(output / selection.filename, map_location="cpu", weights_only=True)
         model.load_state_dict(selected["model"])
         try:
             probe(
-                model.encoder, manifest, config, output, "selected", device, budget, tracker=tracker
+                model.encoder, dataset, config, output, "selected", device, budget, tracker=tracker
             )
         except BudgetStop:
             # last.pth owns the final training state and optimizer. Keep that
@@ -457,12 +445,21 @@ def run(config, manifest, output, *, device="cpu", budget=None, resume=None, tra
             if state["epoch"] < config["epochs"]
             else "maximum_epochs",
             "model_contract": model.contract,
+            "selection": selection.name,
             "parameters": model.parameter_counts(),
         },
     )
     write_history(output / "history.jsonl", state["history"])
     if tracker:
+        selected = selection.summary(state)
         tracker.summary(
-            {"selected/validation_mse": state["best_loss"], "completed_epochs": state["epoch"]}
+            {
+                **selected,
+                "completed_epochs": state["epoch"],
+                "checkpoint_selection": selection.name,
+            }
         )
-    return output / "best.pth"
+        tracker.checkpoint(
+            output / selection.filename, metadata={"selection": selection.name, **selected}
+        )
+    return output / selection.filename

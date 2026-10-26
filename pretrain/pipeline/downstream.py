@@ -8,23 +8,23 @@ from pretrain.pipeline.checkpoint import dataset_identity, set_seed, stream_seed
 from pretrain.models.factory import Classifier, create_model, resolve_model_config
 
 
-TRANSFER_TASKS = {"crowdsourced", "bciciv_2a", "kalunga"}
+TRANSFER_TASKS = {"crowdsourced", "bciciv_2a", "kalunga", "physionet_mi"}
 
 
-def validate_pretraining_model(payload, config):
+def validate_pretraining_model(payload, config, *, target_task=None):
     """A selected encoder must use the requested model and training seed."""
     expected = resolve_model_config(config)
     pretrained = payload["config"]
-    if any(
-        pretrained.get(key) != expected.get(key)
-        for key in ("model", "seed", "depth", "width", "heads")
-    ):
+    keys = ("model", "depth", "width", "heads")
+    if target_task not in TRANSFER_TASKS:
+        keys += ("seed",)
+    if any(pretrained.get(key) != expected.get(key) for key in keys):
         raise ValueError("The pretraining checkpoint must match the configured seed and model")
 
 
 def validate_pretraining_source(payload, config, manifest, *, mode):
     """Enforce in-domain pairing and the agreed TUAB transfer source."""
-    validate_pretraining_model(payload, config)
+    validate_pretraining_model(payload, config, target_task=manifest["task"])
     source = payload["contract"].get("dataset_identity")
     if not isinstance(source, dict) or any(
         not isinstance(source.get(key), str) or not source[key]
@@ -34,10 +34,17 @@ def validate_pretraining_source(payload, config, manifest, *, mode):
             "The pretraining checkpoint lacks source dataset provenance; train a fresh model"
         )
     target = dataset_identity(manifest)
-    transfer = mode == "frozen" and manifest["task"] in TRANSFER_TASKS
+    if mode not in {"linear_probe", "finetune"}:
+        raise ValueError("Downstream mode must be linear_probe or finetune")
+    if (
+        config.get("purpose", "").startswith("paper_")
+        and payload["contract"]["config"].get("purpose") != "paper_pretrain"
+    ):
+        raise ValueError("Paper evaluation requires a checkpoint from verified paper pretraining")
+    transfer = manifest["task"] in TRANSFER_TASKS
     if transfer:
-        if source["task"] != "tuab":
-            raise ValueError("Paper frozen transfer requires a TUAB pretraining checkpoint")
+        if source["task"] != "tuab" or source.get("scope") != "tuab_source":
+            raise ValueError("Cross-domain evaluation requires the shared TUAB source checkpoint")
         return
     if source != target or payload["contract"]["dataset"] != manifest["fingerprint"]:
         raise ValueError(

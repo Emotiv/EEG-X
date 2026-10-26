@@ -12,6 +12,7 @@ from pretrain.pipeline.download import digest
 
 
 CHANNELS = ["Oz", "O1", "O2", "PO3", "POz", "PO7", "PO8", "PO4"]
+RUN_COUNTS = (2, 2, 2, 2, 2, 2, 3, 2, 2, 4, 2, 5)
 
 
 class Kalunga:
@@ -23,6 +24,14 @@ class Kalunga:
         self.metadata = json.loads(record.read_text())
         if self.metadata["id"] != 2392979:
             raise ValueError("Kalunga author deposit identity changed")
+        expected = {
+            f"subject{subject:02d}_run{run}_raw.fif"
+            for subject, count in enumerate(RUN_COUNTS, 1)
+            for run in range(1, count + 1)
+        }
+        self.files = [item for item in self.metadata["files"] if item["key"] in expected]
+        if {item["key"] for item in self.files} != expected:
+            raise ValueError("Kalunga is missing the verified original thirty-run catalog")
         self.label_evidence = {
             "status": "verified",
             "kind": "author_deposit_fif_stimulus_codes",
@@ -33,12 +42,22 @@ class Kalunga:
             "native_codes": {"1": "rest", "2": "13_Hz", "3": "21_Hz", "4": "17_Hz"},
             "crop_seconds_after_event": [2, 4],
             "subject_authority": "author deposit participant-labelled filenames",
-            "duplicates": "exclude every copy of exact recording or emitted-window duplicate groups",
-            "scope": "new reduced-data evaluation; not the original paper sample contract",
+            "duplicates": "retain reference copies and group duplicate-linked subjects",
+            "scope": "original thirty-run sample catalog verified by complete legacy waveform replay",
+            "reference_catalog": {
+                "loader": "https://raw.githubusercontent.com/NeuroTechX/moabb/555cc3b/moabb/datasets/ssvep_exo.py",
+                "runs_per_subject": list(RUN_COUNTS),
+                "omitted_source_files": sorted(
+                    item["key"] for item in self.metadata["files"] if item["key"] not in expected
+                ),
+                "legacy_native_label_map": {"1": 3, "2": 0, "3": 1, "4": 2},
+                "legacy_to_new_label_map": {"0": 1, "1": 2, "2": 3, "3": 0},
+                "label_note": "preserve corrected physical frequencies; legacy 17/21 Hz meanings were swapped",
+            },
         }
 
     def recordings(self):
-        for item in sorted(self.metadata["files"], key=lambda f: f["key"]):
+        for item in sorted(self.files, key=lambda f: f["key"]):
             match = re.fullmatch(r"subject(0[1-9]|1[0-2])_run[1-5]_raw\.fif", item["key"])
             if match is None:
                 raise ValueError("Unknown author participant filename")

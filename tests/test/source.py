@@ -24,7 +24,7 @@ def dataset(root, task, *, release=0):
     samples = 1280 if task == "tuab" else 256
     channels = TUAB_CHANNELS if task == "tuab" else CHANNELS
     writer = PreparedWriter(
-        root,
+        root.with_suffix(".h5"),
         task=task,
         window_samples=samples,
         channels=channels,
@@ -55,14 +55,15 @@ def dataset(root, task, *, release=0):
         return metadata
 
     writer.finish(finalize=finalize)
-    return root / "manifest.json"
+    return writer.path
 
 
-def invoke(config, manifest, output, *, stage="pretrain", checkpoint=None):
+def invoke(config, manifest, output, *, stage="pretrain", checkpoint=None, **overrides):
     config.write_text(
         yaml.safe_dump(
             {
-                "manifest": str(manifest),
+                "dataset": str(manifest),
+                "purpose": "engineering",
                 "output": str(output),
                 "stage": stage,
                 "checkpoint": str(checkpoint) if checkpoint else None,
@@ -72,7 +73,7 @@ def invoke(config, manifest, output, *, stage="pretrain", checkpoint=None):
                 "warmup_epochs": 0,
                 "depth": 1,
                 "width": 16,
-                "seed": 241,
+                **({"seed": 241} if "seeds" not in overrides else {}),
                 "logical_batch": 14,
                 "microbatch": 7,
                 "workers": 0,
@@ -80,6 +81,7 @@ def invoke(config, manifest, output, *, stage="pretrain", checkpoint=None):
                 "probe_interval": 0,
                 "optimizer": {"weight_decay": 0.0},
                 "wandb": {"enabled": False},
+                **overrides,
             }
         )
     )
@@ -95,7 +97,7 @@ def invoke(config, manifest, output, *, stage="pretrain", checkpoint=None):
 @pytest.mark.parametrize(
     "stage, task, release, error",
     [
-        ("frozen", "crowdsourced", 0, "TUAB"),
+        ("linear_probe", "crowdsourced", 0, "TUAB"),
         ("finetune", "dreamer_arousal", 1, "dataset and subject split"),
     ],
 )
@@ -119,18 +121,24 @@ def test_main_rejects_checkpoint_from_the_wrong_paper_source(tmp_path, stage, ta
     "source_task, target_task, stage",
     [
         ("dreamer_arousal", "dreamer_arousal", "finetune"),
-        ("tuab", "crowdsourced", "frozen"),
+        ("tuab", "crowdsourced", "linear_probe"),
+        ("tuab", "crowdsourced", "finetune"),
     ],
 )
 def test_main_accepts_the_matching_paper_source(tmp_path, source_task, target_task, stage):
     source = dataset(tmp_path / "source", source_task)
-    target = source if stage == "finetune" else dataset(tmp_path / "target", target_task)
+    target = source if source_task == target_task else dataset(tmp_path / "target", target_task)
     config = tmp_path / "run.yaml"
-    trained = invoke(config, source, tmp_path / "pretrain")
+    extra = {"pretraining_scope": "tuab_source"} if source_task == "tuab" else {}
+    trained = invoke(config, source, tmp_path / "pretrain", **extra)
     assert trained.returncode == 0, trained.stdout + trained.stderr
     output = tmp_path / "evaluation"
     completed = invoke(
-        config, target, output, stage=stage, checkpoint=tmp_path / "pretrain/training/best.pth"
+        config,
+        target,
+        output,
+        stage=stage,
+        checkpoint=tmp_path / "pretrain/training" / ("best.pth"),
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     result = json.loads((output / "training/result.json").read_text())
@@ -138,3 +146,57 @@ def test_main_accepts_the_matching_paper_source(tmp_path, source_task, target_ta
     identity = result["selection"]["pretraining_contract"]["dataset_identity"]
     assert identity["task"] == source_task
     assert len(identity["release_sha256"]) == len(identity["split_sha256"]) == 64
+    paper_output = tmp_path / "paper-evaluation"
+    rejected = invoke(
+        config,
+        target,
+        paper_output,
+        stage=stage,
+        checkpoint=tmp_path / "pretrain/training/best.pth",
+        purpose="paper",
+    )
+    assert rejected.returncode != 0
+    assert "checkpoint from verified paper pretraining" in rejected.stderr
+    assert not (paper_output / "training/test_predictions.npz").exists()
+    assert not (paper_output / "wandb.json").exists()
+
+
+def test_tuab_source_encoder_is_shared_by_target_seeds_in_both_downstream_modes(tmp_path):
+    source = dataset(tmp_path / "source", "tuab")
+    target = dataset(tmp_path / "target", "crowdsourced")
+    config = tmp_path / "run.yaml"
+    trained = invoke(
+        config, source, tmp_path / "pretrain", pretraining_scope="tuab_source", epochs=2
+    )
+    assert trained.returncode == 0, trained.stdout + trained.stderr
+    manifest = json.loads((tmp_path / "pretrain/split.json").read_text())
+    assert manifest["counts"] == {"train": 16, "validation": 4, "test": 0}
+    assert set(manifest["subjects"].values()) == {"train", "validation"}
+    result = json.loads((tmp_path / "pretrain/training/result.json").read_text())
+    assert result["selection"] == "minimum_validation_loss"
+    assert result["state"]["epoch"] == 2
+    assert all("validation_mse" in row for row in result["state"]["history"])
+    checkpoint = tmp_path / "pretrain/training/best.pth"
+    assert checkpoint.exists() and not (checkpoint.parent / "final.pth").exists()
+    for stage in ("linear_probe", "finetune"):
+        completed = invoke(
+            config,
+            target,
+            tmp_path / stage,
+            stage=stage,
+            checkpoint=checkpoint,
+            seeds=[242, 243],
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        for seed in (242, 243):
+            root = tmp_path / stage / f"seed-{seed}"
+            result = json.loads((root / "training/result.json").read_text())
+            assert result["status"] == "complete"
+            assert result["selection"]["status"] == "locked_before_test"
+            assert result["selection"]["pretraining_contract"]["config"]["seed"] == 241
+            assert (
+                result["selection"]["pretraining_contract"]["dataset_identity"]["scope"]
+                == "tuab_source"
+            )
+            split = json.loads((root / "split.json").read_text())
+            assert split["split_seed"] == seed

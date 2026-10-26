@@ -109,7 +109,7 @@ def compare_benchmarks(before, after):
 
 def benchmark(
     config,
-    manifest,
+    dataset,
     output,
     budget_root,
     *,
@@ -163,13 +163,15 @@ def benchmark(
         path.mkdir(parents=True)
         os.environ[key] = str(path)
     torch.set_num_threads(4)
-    config = resolve_model_config({
-        **config,
-        "purpose": "performance_benchmark",
-        "gpu_sharing": "shared" if allow_busy else "exclusive",
-        "gpu_memory_limit_gib": max_memory_gib,
-    })
-    view = Windows(manifest, "train", verify_signals=False)
+    config = resolve_model_config(
+        {
+            **config,
+            "purpose": "performance_benchmark",
+            "gpu_sharing": "shared" if allow_busy else "exclusive",
+            "gpu_memory_limit_gib": max_memory_gib,
+        }
+    )
+    view = Windows(dataset, "train", verify_signals=False)
     logical_batch = config["logical_batch"]
     if (len(view) + logical_batch - 1) // logical_batch <= updates + warmup:
         raise ValueError("Dataset needs another training batch after the measured updates")
@@ -203,7 +205,7 @@ def benchmark(
         )
         with profiler:
             try:
-                training.run(config, manifest, output / "run", device="cuda:0", budget=timer)
+                training.run(config, dataset, output / "run", device="cuda:0", budget=timer)
             except BenchmarkComplete:
                 pass
         times = timer.times[warmup:]
@@ -256,7 +258,7 @@ def benchmark(
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config")
-    parser.add_argument("--manifest")
+    parser.add_argument("--dataset")
     parser.add_argument("--output", required=True)
     parser.add_argument("--budget", help="Existing shared GPU ledger directory")
     parser.add_argument("--gpu", type=int)
@@ -279,13 +281,13 @@ def main():
         atomic_json(Path(args.output), result)
         print(json.dumps(result), flush=True)
         return
-    if not args.config or not args.manifest or not args.budget or args.gpu is None:
-        parser.error("Training benchmarks require --config, --manifest, --budget, and --gpu")
+    if not args.config or not args.dataset or not args.budget or args.gpu is None:
+        parser.error("Training benchmarks require --config, --dataset, --budget, and --gpu")
     if not os.environ.get("STY"):
         parser.error("Run the benchmark in its own screen session")
     result = benchmark(
         json.loads(Path(args.config).read_text()),
-        args.manifest,
+        args.dataset,
         args.output,
         args.budget,
         gpu=args.gpu,

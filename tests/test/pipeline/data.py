@@ -1,15 +1,17 @@
 import json
+import h5py
 
 import numpy as np
 import pytest
 
 from pretrain.pipeline.data import PreparedWriter, Windows
 from pretrain.pipeline.preprocessing import preprocess, profile
+from pretrain.pipeline.dataset import read_metadata
 
 
 def prepared_fixture(root):
     writer = PreparedWriter(
-        root,
+        root.with_suffix(".h5"),
         task="fixture",
         window_samples=256,
         channels=["C1", "Pz"],
@@ -25,19 +27,8 @@ def prepared_fixture(root):
             source={"sha256": str(subject) * 64},
             events=[(0, 0), (256, 1), (512, 0), (768, 1)],
         )
-    metadata = writer.finish()
-    metadata["non_rasr_evidence"] = {
-        "status": "verified",
-        "upstream_rasr": False,
-        "authority": "synthetic test generator",
-        "sha256": "f" * 64,
-    }
-    from pretrain.metadata import atomic_json, fingerprint
-
-    metadata.pop("fingerprint")
-    metadata["fingerprint"] = fingerprint(metadata)
-    atomic_json(root / "manifest.json", metadata)
-    return root / "manifest.json"
+    writer.finish()
+    return writer.path
 
 
 def test_prepared_windows_preserve_disjoint_subjects_and_labels(tmp_path):
@@ -50,23 +41,24 @@ def test_prepared_windows_preserve_disjoint_subjects_and_labels(tmp_path):
     }
     for view in views.values():
         assert view[0]["eeg"].shape == (2, 256)
-    metadata = json.loads(path.read_text())
+    metadata = read_metadata(path)
     assert len(metadata["subjects"]) == 10
 
 
 def test_prepared_signal_mutation_is_rejected(tmp_path):
     path = prepared_fixture(tmp_path / "prepared")
-    record = path.parent / "record-000000.npy"
-    np.save(record, np.zeros((2, 1024), dtype=np.float32))
+    row = int(Windows(path, "train").rows[0])
+    with h5py.File(path, "r+") as handle:
+        handle["X"][row] = 0
     with pytest.raises(ValueError, match="changed"):
         for split in ("train", "validation", "test"):
-            Windows(path, split)
+            Windows(path, split)[0]
 
 
 def test_unknown_labels_do_not_become_verified(tmp_path):
     with pytest.raises(ValueError, match="Verified label"):
         PreparedWriter(
-            tmp_path / "bad",
+            tmp_path / "bad.h5",
             task="fixture",
             window_samples=256,
             channels=["C1", "Pz"],
@@ -75,9 +67,9 @@ def test_unknown_labels_do_not_become_verified(tmp_path):
         )
 
 
-def test_duplicate_windows_are_excluded_across_distinct_recordings(tmp_path):
+def test_shared_windows_linking_every_subject_cannot_form_independent_splits(tmp_path):
     writer = PreparedWriter(
-        tmp_path / "duplicates",
+        tmp_path / "duplicates.h5",
         task="fixture",
         window_samples=256,
         channels=["C1", "Pz"],
@@ -95,10 +87,9 @@ def test_duplicate_windows_are_excluded_across_distinct_recordings(tmp_path):
             source={"sha256": "a" * 64},
             events=[(0, 0), (256, 0), (512, 1)],
         )
-    metadata = writer.finish()
-    duplicates = [item for item in metadata["excluded"] if item["reason"] == "duplicate_window"]
-    assert len(duplicates) == 10
-    assert sum(metadata["counts"].values()) == 20
+    with pytest.raises(ValueError, match="duplicate groups"):
+        writer.finish()
+    assert not writer.path.exists()
 
 
 def test_preprocessing_is_recording_level_and_resampled():
@@ -116,14 +107,14 @@ def test_preprocessing_is_recording_level_and_resampled():
 
 
 def test_seed_bank_pools_official_partitions_and_preserves_signal_hashes(tmp_path):
-    from pretrain.pipeline.splits import split_manifest
+    from pretrain.pipeline.splits import select_split
 
     source = prepared_fixture(tmp_path / "source")
-    original = json.loads(source.read_text())
+    original = read_metadata(source)
     assignments = []
     for seed in (241, 242, 243, 244, 245):
-        manifest = split_manifest(source, tmp_path / str(seed), seed)
-        metadata = json.loads(manifest.read_text())
+        manifest = select_split(source, tmp_path / str(seed), seed)
+        metadata = read_metadata(manifest)
         assignments.append(metadata["subjects"])
         assert metadata["split_seed"] == seed
         assert [r["sha256"] for r in metadata["records"]] == [
@@ -141,8 +132,8 @@ def test_upstream_rasr_evidence_is_optional_but_input_contract_is_checked(tmp_pa
     from pretrain.pipeline.splits import validate_prepared_input
 
     manifest = prepared_fixture(tmp_path / "data")
-    metadata = json.loads(manifest.read_text())
-    metadata.pop("non_rasr_evidence")
+    metadata = read_metadata(manifest)
+    metadata.pop("non_rasr_evidence", None)
     validate_prepared_input(metadata)
     metadata["preprocessing"]["clip"] = 999
     with pytest.raises(ValueError, match="preprocessing differs"):

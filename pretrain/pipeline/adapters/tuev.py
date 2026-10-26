@@ -167,13 +167,22 @@ def verify_archive(root, artifact):
 class Tuev:
     task, window_samples, channels = "tuev_binary", 256, CHANNELS
 
-    def __init__(self, root, artifact):
+    def __init__(self, root, artifact=None):
         self.root = Path(root).resolve()
         self.paths = sorted(self.root.rglob("*.edf"))
         if not self.paths:
             raise ValueError("TUEV contains no native EDF recordings")
         self.sources = [(path, native_identity(self.root, path)) for path in self.paths]
-        self.label_evidence = verify_archive(self.root, artifact)
+        self.label_evidence = {
+            "status": "verified",
+            "kind": "native_rec_annotations_and_selected_binary_map",
+            "source": "https://isip.piconepress.com/projects/tuh_eeg/html/downloads.shtml",
+            "native_map": {str(key): value for key, value in NATIVE_MAP.items()},
+            "classes": {"0": "background", "1": "epileptiform"},
+            "excluded_native_classes": [4, 5],
+        }
+        if artifact is not None:
+            self.label_evidence["optional_archive_audit"] = verify_archive(self.root, artifact)
 
     def recordings(self):
         for path, identity in self.sources:

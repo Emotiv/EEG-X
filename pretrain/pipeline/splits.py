@@ -1,50 +1,22 @@
 """Immutable per-seed subject membership over unchanged prepared signals."""
 
-import copy
 import json
 from pathlib import Path
 
-import numpy as np
-
 from pretrain.channel_identity import sha256_file
-from pretrain.pipeline.data import SPLITS, Windows, subject_split
 from pretrain.metadata import atomic_json, fingerprint
 
 
-def split_manifest(manifest, output, seed):
-    source = Path(manifest).resolve()
-    view = Windows(source, "train")
-    metadata = copy.deepcopy(view.metadata)
-    index = np.array(view.index, copy=True)
-    used = set(index["record"].tolist())
-    records = [r for i, r in enumerate(metadata["records"]) if i in used]
-    assignments = subject_split(records, seed)
-    for number, record in enumerate(metadata["records"]):
-        record["path"] = str((source.parent / record["path"]).resolve())
-        if sha256_file(record["path"]) != record["sha256"]:
-            raise ValueError("Prepared signal changed before split generation")
-        index["split"][index["record"] == number] = SPLITS.get(
-            assignments.get(record["subject"]), 255
-        )
-    classes = metadata["classes"]
-    for role, code in SPLITS.items():
-        if np.unique(index["label"][index["split"] == code]).tolist() != classes:
-            raise ValueError(f"Seed {seed} split {role} lacks class coverage")
+def select_split(dataset, output, seed, *, scope="subject_holdout"):
+    """Read a frozen H5 split; a run saves provenance without copying EEG or indices."""
+    from pretrain.pipeline.dataset import DatasetReference, read_metadata
+
+    selected = DatasetReference(Path(dataset), seed, scope)
+    metadata = read_metadata(selected)
     root = Path(output)
-    root.mkdir(parents=True, exist_ok=False)
-    np.save(root / "windows.npy", index)
-    metadata.update(
-        subjects=assignments,
-        split_seed=seed,
-        split_policy="pooled_subject_70_10_20_v1",
-        parent_manifest_sha256=sha256_file(source),
-        windows_sha256=sha256_file(root / "windows.npy"),
-        counts={role: int((index["split"] == code).sum()) for role, code in SPLITS.items()},
-    )
-    metadata.pop("fingerprint", None)
-    metadata["fingerprint"] = fingerprint(metadata)
-    atomic_json(root / "manifest.json", metadata)
-    return root / "manifest.json"
+    root.mkdir(parents=True, exist_ok=True)
+    atomic_json(root / "split.json", {"dataset": str(selected.path), **metadata})
+    return selected
 
 
 def validate_prepared_input(metadata):
@@ -75,7 +47,34 @@ def attach_source_evidence(metadata, evidence_path):
 
 def validate_run_dataset(config, metadata):
     """Engineering checks cannot silently become paper experiments."""
+    if config.get("pretraining_scope") == "tuab_source":
+        if (
+            metadata["task"] != "tuab"
+            or metadata.get("split_scope") != "tuab_source"
+            or set(metadata["subjects"].values()) != {"train", "validation"}
+            or not metadata["counts"]["validation"]
+            or metadata["counts"]["test"]
+        ):
+            raise ValueError(
+                "Shared TUAB pretraining requires separate training and validation subjects"
+            )
+    elif metadata.get("split_scope") == "tuab_source":
+        raise ValueError("Shared TUAB data cannot be used as an in-domain subject holdout")
     if config.get("purpose", "").startswith("paper_"):
         validate_prepared_input(metadata)
+        from pretrain.pipeline.dataset.catalog import REFERENCES
+
+        policy = metadata.get("sampling", {})
+        status = metadata.get("reference_comparison", {}).get("status")
+        if (
+            policy.get("name") != "original_catalog_eegx2_v1"
+            or policy.get("pilot", True)
+            or status not in {"matched", "documented_exception"}
+        ):
+            raise ValueError("Paper experiments require a verified complete reference catalog")
+        if REFERENCES.get(metadata["task"], {}).get("requires_row_provenance") and not metadata.get(
+            "reference_provenance"
+        ):
+            raise ValueError("Paper experiments require established original-row provenance")
         if metadata.get("split_seed") != config["seed"]:
             raise ValueError("Paper experiments require the matching per-seed split")

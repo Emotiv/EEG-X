@@ -31,7 +31,8 @@ def test_yaml_command_trains_and_resumes_one_model_without_a_study(tmp_path):
     prepared_fixture(tmp_path / "data")
     path = tmp_path / "train.yaml"
     settings = {
-        "manifest": "data/manifest.json",
+        "dataset": "data.h5",
+        "purpose": "engineering",
         "output": "first",
         "device": "cpu",
         "seed": 242,
@@ -54,7 +55,7 @@ def test_yaml_command_trains_and_resumes_one_model_without_a_study(tmp_path):
     assert (output / "training" / "best.pth").is_file()
     assert (output / "training" / "last.pth").is_file()
     assert not (output / "plan.json").exists()
-    split = json.loads((output / "split" / "manifest.json").read_text())
+    split = json.loads((output / "split.json").read_text())
     assert split["split_seed"] == 242
     receipt = json.loads((output / "training" / "run.json").read_text())
     assert receipt["resolved"]["optimizer"]["defaults"]["lr"] == 0.0004
@@ -98,7 +99,8 @@ def test_main_script_logs_real_offline_wandb_metrics_and_evaluates(tmp_path):
     prepared_fixture(tmp_path / "data")
     config = tmp_path / "train.yaml"
     settings = {
-        "manifest": "data/manifest.json",
+        "dataset": "data.h5",
+        "purpose": "engineering",
         "output": "pretrain",
         "device": "cpu",
         "precision": "fp32",
@@ -123,7 +125,9 @@ def test_main_script_logs_real_offline_wandb_metrics_and_evaluates(tmp_path):
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert (tmp_path / "pretrain" / "wandb.json").is_file()
     assert list((tmp_path / "pretrain" / "wandb").glob("offline-run-*/run-*.wandb"))
-    settings.update(stage="frozen", checkpoint="pretrain/training/best.pth", output="evaluation")
+    settings.update(
+        stage="linear_probe", checkpoint="pretrain/training/best.pth", output="evaluation"
+    )
     config.write_text(yaml.safe_dump(settings))
     completed = subprocess.run(
         command,
@@ -158,19 +162,16 @@ def test_main_script_logs_real_offline_wandb_metrics_and_evaluates(tmp_path):
 
 
 def test_yaml_command_accepts_data_without_upstream_rasr_evidence(tmp_path):
-    from pretrain.metadata import atomic_json, fingerprint
+    from pretrain.pipeline.dataset import read_metadata
 
-    manifest = prepared_fixture(tmp_path / "data")
-    metadata = json.loads(manifest.read_text())
-    metadata.pop("non_rasr_evidence")
-    metadata.pop("fingerprint")
-    metadata["fingerprint"] = fingerprint(metadata)
-    atomic_json(manifest, metadata)
+    dataset = prepared_fixture(tmp_path / "data")
+    assert "non_rasr_evidence" not in read_metadata(dataset)
     config = tmp_path / "train.yaml"
     config.write_text(
         yaml.safe_dump(
             {
-                "manifest": "data/manifest.json",
+                "dataset": "data.h5",
+                "purpose": "engineering",
                 "output": "run",
                 "device": "cpu",
                 "precision": "fp32",
@@ -188,7 +189,7 @@ def test_yaml_command_accepts_data_without_upstream_rasr_evidence(tmp_path):
     completed = invoke(config, ROOT)
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert (tmp_path / "run/training/best.pth").exists()
-    saved = json.loads((tmp_path / "run/split/manifest.json").read_text())
+    saved = json.loads((tmp_path / "run/split.json").read_text())
     assert "non_rasr_evidence" not in saved
     assert not list(tmp_path.rglob("status.json"))
 
@@ -199,7 +200,8 @@ def test_one_main_command_runs_seed_list_locally_with_separate_wandb_runs(tmp_pa
     config.write_text(
         yaml.safe_dump(
             {
-                "manifest": "data/manifest.json",
+                "dataset": "data.h5",
+                "purpose": "engineering",
                 "output": "seeds",
                 "seeds": [241, 242],
                 "device": "cpu",
@@ -230,7 +232,7 @@ def test_one_main_command_runs_seed_list_locally_with_separate_wandb_runs(tmp_pa
         payload = torch.load(output / "training" / "last.pth", weights_only=True)
         assert payload["contract"]["config"]["seed"] == seed
         receipts.append(json.loads((output / "wandb.json").read_text()))
-        assignments.append(json.loads((output / "split" / "manifest.json").read_text())["subjects"])
+        assignments.append(json.loads((output / "split.json").read_text())["subjects"])
     assert receipts[0]["id"] != receipts[1]["id"]
     assert receipts[0]["group"] == receipts[1]["group"]
     assert assignments[0] != assignments[1]
@@ -243,11 +245,19 @@ def test_one_main_command_runs_seed_list_locally_with_separate_wandb_runs(tmp_pa
     "content, message",
     [
         ("[]", "mapping"),
-        ("manifest: data.json\noutput: run\nepoches: 3", "Unknown training settings"),
-        ("manifest: data.json\noutput: run\ndevice: cuda:1", "shared budget"),
-        ("manifest: data.json\noutput: run\nseed: 241\nseeds: [241, 242]", "not both"),
-        ("manifest: data.json\noutput: run\nseeds: [241, 241]", "duplicates"),
-        ("manifest: data.json\noutput: run\nseeds: []", "nonempty list"),
+        ("dataset: data.h5\noutput: run\ndevice: cpu\nshared_gpu: true", "requires a CUDA"),
+        ("dataset: data.h5\noutput: run\ndevice: cpu\nshared_gpu: yesplease", "must be boolean"),
+        ("dataset: data.h5\noutput: run\ndevice: cpu\nconcurrent_gpu_runs: 0", "positive integer"),
+        (
+            "dataset: data.h5\noutput: run\ndevice: cpu\nconcurrent_gpu_runs: 4",
+            "requires shared_gpu",
+        ),
+        ("dataset: data.h5\noutput: run\ndevice: cpu\npurpose: research", "purpose must"),
+        ("dataset: data.h5\noutput: run\nepoches: 3", "Unknown training settings"),
+        ("dataset: data.h5\noutput: run\ndevice: cuda:1", "shared budget"),
+        ("dataset: data.h5\noutput: run\nseed: 241\nseeds: [241, 242]", "not both"),
+        ("dataset: data.h5\noutput: run\nseeds: [241, 241]", "duplicates"),
+        ("dataset: data.h5\noutput: run\nseeds: []", "nonempty list"),
     ],
 )
 def test_invalid_yaml_fails_before_training(tmp_path, content, message):

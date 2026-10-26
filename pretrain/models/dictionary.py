@@ -42,7 +42,10 @@ class SoftDiCT(nn.Module):
                 filters = getattr(self, f"filters_{size}")
                 for index, dilation in enumerate(self.dilations):
                     responses = F.conv1d(
-                        signal, filters[index], dilation=dilation, padding=(size - 1) * dilation // 2
+                        signal,
+                        filters[index],
+                        dilation=dilation,
+                        padding=(size - 1) * dilation // 2,
                     ).reshape(batch, channels, self.groups, self.k, samples)
                     counts = (responses / self.temperature).softmax(dim=3).sum(dim=-1)
                     features.append(counts.flatten(2))

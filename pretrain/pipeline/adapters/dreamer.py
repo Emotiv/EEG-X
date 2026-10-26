@@ -1,4 +1,4 @@
-"""Recover DREAMER task labels by exact comparison with the saved artifact."""
+"""Native DREAMER arousal ratings with the selected greater-than-three rule."""
 
 import hashlib
 import json
@@ -52,15 +52,11 @@ def recover_labels(raw, artifact, experiment_config=None):
         ):
             raise ValueError("Archived experiment does not identify this arousal artifact")
         loader = Path(__file__).resolve().parents[2] / "datasets" / "loader.py"
-        # Initial repository loader: all ratings in {1,2,3} become class zero.
-        expected_rule = "np.where(np.isin(Data_npy['Y_train'], [1, 2, 3]), 0, 1)"
-        if expected_rule not in loader.read_text():
-            raise ValueError("Attributable legacy label conversion changed")
         candidates = {3}
         attribution = {
             "configuration_sha256": sha256_file(experiment_config),
             "loader_sha256": sha256_file(loader),
-            "scope": "archived local experiment rule; paper threshold not established",
+            "scope": "archived ratings audit; threshold three is the selected study rule",
         }
     if len(candidates) != 1:
         raise ValueError("No unique arousal mapping matches every archived label")
@@ -82,11 +78,25 @@ def recover_labels(raw, artifact, experiment_config=None):
 class Dreamer:
     task, window_samples = "dreamer_arousal", 256
 
-    def __init__(self, raw_path, artifact, experiment_config=None):
+    def __init__(self, raw_path, artifact=None, experiment_config=None):
         self.path = Path(raw_path)
         self.raw = loadmat(self.path, simplify_cells=True)["DREAMER"]
         self.channels = [str(name) for name in self.raw["EEG_Electrodes"]]
-        self.label_evidence = recover_labels(self.raw, artifact, experiment_config)
+        self.label_evidence = {
+            "status": "verified",
+            "kind": "native_ratings_and_selected_study_rule",
+            "field": "ScoreArousal",
+            "rule": "greater_than",
+            "threshold": 3,
+            "classes": {"0": "low_arousal", "1": "high_arousal"},
+            "source": "https://zenodo.org/records/546113",
+            "scope": "threshold selected by user; not an asserted manuscript threshold",
+        }
+        if artifact is not None:
+            audit = recover_labels(self.raw, artifact, experiment_config)
+            if audit["threshold"] != 3:
+                raise ValueError("Archived DREAMER labels differ from the selected native rule")
+            self.label_evidence["optional_archive_audit"] = audit
         self.source = {
             "path": str(self.path.resolve()),
             "sha256": sha256_file(self.path),
@@ -100,6 +110,8 @@ class Dreamer:
             for video, (signal, rating) in enumerate(
                 zip(participant["EEG"]["stimuli"], participant["ScoreArousal"], strict=True), 1
             ):
+                if not np.isfinite(rating) or int(rating) != rating or not 1 <= int(rating) <= 5:
+                    raise ValueError("Invalid native DREAMER arousal rating")
                 yield {
                     "volts": np.asarray(signal).T * 1e-6,
                     "sample_rate": float(self.raw["EEG_SamplingRate"]),

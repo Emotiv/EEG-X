@@ -4,9 +4,11 @@ import numpy as np
 import pytest
 import torch
 
-from pretrain.pipeline import finetuning, frozen, training
+from pretrain.pipeline import finetuning, linear_probe, training
 from pretrain.pipeline.budget import BudgetStop, NoGpuBudget
 from pretrain.pipeline.data import Windows
+from pretrain.tracking import Tracker
+from tests.test.tracking import RecordedRun
 from tests.test.pipeline.data import prepared_fixture
 from tests.test.pipeline.training import configuration
 
@@ -77,7 +79,7 @@ def test_both_downstream_modes_select_before_opening_test(tmp_path, monkeypatch)
     manifest = prepared_fixture(tmp_path / "data")
     config = configuration()
     checkpoint = training.run(config, manifest, tmp_path / "pretrain")
-    for module, name in ((frozen, "frozen"), (finetuning, "finetune")):
+    for module, name in ((linear_probe, "linear_probe"), (finetuning, "finetune")):
         output = tmp_path / name
         original = module.Windows
 
@@ -88,9 +90,17 @@ def test_both_downstream_modes_select_before_opening_test(tmp_path, monkeypatch)
                 assert not (output / "test_predictions.npz").exists()
             return original(path, split, **kwargs)
 
+        recorded = RecordedRun()
         with monkeypatch.context() as patch:
             patch.setattr(module, "Windows", checked_view)
-            scores = module.run(config, manifest, checkpoint, output)
+            scores = module.run(config, manifest, checkpoint, output, tracker=Tracker(recorded))
+        assert recorded.summary["test/loss"] == scores["loss"]
+        assert recorded.summary["test/bal_acc"] == scores["balanced_accuracy"]
+        assert not any(
+            key.startswith("test/") and isinstance(value, (int, float))
+            for row in recorded.rows
+            for key, value in row.items()
+        )
         assert 0 <= scores["balanced_accuracy"] <= 1
         assert 0 <= scores["auroc"] <= 1
         saved = np.load(output / "test_predictions.npz")
@@ -141,3 +151,28 @@ def test_final_test_interruption_preserves_last_finetuning_state(tmp_path, monke
     resumed = tmp_path / "resumed"
     finetuning.run(config, manifest, checkpoint, resumed, resume=output / "last.pth")
     assert json.loads((resumed / "result.json").read_text())["status"] == "complete"
+
+
+def test_finetuning_stops_after_validation_patience(tmp_path, monkeypatch):
+    manifest = prepared_fixture(tmp_path / "data")
+    checkpoint = training.run(configuration(), manifest, tmp_path / "pretrain")
+    original = finetuning.predictions
+
+    def flat_validation(model, view, *args):
+        labels, probabilities, identities = original(model, view, *args)
+        if view.split == "validation":
+            probabilities = np.eye(2)[labels]
+        return labels, probabilities, identities
+
+    monkeypatch.setattr(finetuning, "predictions", flat_validation)
+    output = tmp_path / "finetune"
+    finetuning.run(
+        {**configuration(), "epochs": 20, "early_stopping": {"patience": 5, "min_delta": 0}},
+        manifest,
+        checkpoint,
+        output,
+    )
+    last = torch.load(output / "last.pth", weights_only=True)
+    assert last["state"]["epoch"] == 6
+    assert last["state"]["bad_epochs"] == 5
+    assert torch.load(output / "best.pth", weights_only=True)["epoch"] == 1

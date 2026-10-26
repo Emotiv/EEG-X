@@ -21,7 +21,7 @@ Reproduce the evaluation pipeline and regenerate EEG-X paper results on consiste
 | Reconstruction objective | Masked raw waveform MSE plus Soft DiCT temporal-count feature MSE; default when objective is omitted |
 | Pretraining | At most 100 epochs, with validation-based early stopping |
 | In-domain evaluation | Fine-tune tokenizer, encoder, and classifier for 20 epochs |
-| Cross-domain evaluation | Freeze tokenizer and encoder; train only the classifier |
+| Cross-domain evaluation | Both frozen-encoder linear probing and full fine-tuning, independently from one shared TUAB checkpoint |
 | Independent runs | 5 seeds: 241, 242, 243, 244, 245 |
 | Attention backend | FlashAttention where supported; record the actual backend and any fallback |
 | Optimizer and scheduler | StableAdamW pretraining; AdamW fine-tuning; warmup/cosine for both; save actual resolved settings |
@@ -30,41 +30,71 @@ Use the current EEG-X model as the implementation base. Keep its active reconstr
 
 ## Data and subject splits
 
-Use the user-selected processed EEG-X release. Check stored participant IDs, labels, physical channel order, array layout and duplicates. Preserve processed values; do not filter or normalize them again. An as-provided import may cast to float32 and records upstream processing as unverified.
+Prepare each raw dataset with the shared EEG-X2 recipe and publish one self-contained HDF5 file. Store prepared windows, labels, source records, native subjects, physical channels/XYZ, stable window identities and all saved split indices. Explicit imports of historical processed releases preserve their values and record their upstream history separately.
+
+The latest sample reference is the original saved NPY catalog. Restore its strides,
+overlap and multiplicity while changing signal processing to EEG-X2. Keep identical
+recordings and duplicate-linked subjects in the same partition. Crowdsourced uses
+correct native timing and windows within acquisition/label boundaries; report its
+count difference. Other unverified crop mappings block only the affected dataset.
+See docs/task.md for reference counts and reconstruction status.
 
 The user waived proof of upstream non-rASR history. Reconstruct the same processed X arrays supplied as input and add no local rASR. Preserve existing history when available; unknown upstream history does not block training and must not be reported as verified. This differs from the manuscript's rASR-cleaned target method.
 
 | Task | Role | Window | Label contract |
 |---|---|---:|---|
 | DREAMER arousal | Separate pretraining and in-domain fine-tuning | 2 s | High if rating >3, otherwise low; this is the verified local experiment rule, not a documented paper threshold |
-| STEW workload | Separate pretraining and in-domain fine-tuning | 2 s | Use the binary labels and participant IDs stored in the selected STEW.npy; original rating conversion is not re-derived |
+| STEW workload | Separate pretraining and in-domain fine-tuning | 2 s | Native low/high TXT recordings; preserve participant identity across both conditions |
 | TUAB | Separate pretraining, in-domain fine-tuning, and transfer source | 10 s | Official normal/abnormal labels |
-| TUEV binary | Separate pretraining and in-domain fine-tuning | 2 s | Native classes 1/2/3 positive, 6 negative; exclude 4/5; verify correspondence to the processed release |
-| Crowdsourced | Frozen cross-domain evaluation from TUAB | 2 s | Eyes closed/open; retain author-backed recording ownership |
-| BCICIV-2a | Frozen cross-domain evaluation from TUAB | 4 s | Left hand, right hand, feet, tongue |
-| Kalunga SSVEP | Frozen cross-domain evaluation from TUAB | 2 s | Rest and 13/21/17 Hz; use the corrected author-backed event map |
+| TUEV binary | Separate pretraining and in-domain fine-tuning | 2 s | Native classes 1/2/3 positive, 6 negative; exclude 4/5; native REC annotations are authoritative, with archive audits optional |
+| Crowdsourced | Cross-domain linear probing and fine-tuning from TUAB | 2 s | Eyes closed/open; retain author-backed recording ownership |
+| BCICIV-2a | Cross-domain linear probing and fine-tuning from TUAB | 2 s | Verified trial +2 to +4 seconds; feet 0, left hand 1, right hand 2, tongue 3 |
+| Kalunga SSVEP | Cross-domain linear probing and fine-tuning from TUAB | 2 s | Rest and 13/21/17 Hz; use the corrected author-backed event map |
+| PhysioNetMI | Cross-domain linear probing and fine-tuning from TUAB | 2 s | Native imagery EDFs, five classes including task-rest; verified catalog omits initial events and retains later short annotations. Use true 2-second crops at actual rates; complete subject scope by default |
 
-Each in-domain model starts from scratch. Each cross-domain classifier uses the TUAB encoder trained with the matching seed and architecture.
+Each in-domain model starts from scratch. Each cross-domain run starts independently from one shared TUAB encoder with the matching architecture. Source and target seeds need not match. Source pretraining uses the proposed subject-wise 80/20 train/validation split and selects minimum validation reconstruction loss.
 
-New pretraining checkpoints record the source task, release hash and subject-split identity. Fine-tuning requires the same prepared dataset and split as pretraining. Frozen transfer to Crowdsourced, BCICIV-2a or Kalunga requires TUAB as its source. A mismatched or missing source identity stops evaluation before test access and result logging.
+New pretraining checkpoints record the source task, release hash and subject-split identity. In-domain fine-tuning requires the same prepared dataset and split as pretraining. Cross-domain linear probing and fine-tuning require the shared TUAB train/validation source. A mismatched or missing source identity stops evaluation before test access and result logging.
 
 | Split decision | Contract |
 |---|---|
 | Subject pool | Combine subjects from the old train, validation, and test partitions before assigning new roles |
 | Split bank | A separate subject-wise train/validation/test split for each of the 5 seeds |
-| Selected ratio | 70/10/20 by subject; persist the actual rounded assignments |
-| Rounding | Python round; at least 1 validation and 1 test subject, while retaining training subjects |
+| Selected ratio | Approximately 70/10/20 by subject; keep duplicate-linked subject groups intact and persist actual counts |
+| Rounding | Python round defines target subject counts; use nearest cumulative group boundary while reserving an independent group per role |
 | Pairing | Reuse each seed's split across every architecture and objective comparison |
 | Old official partitions | Pool TUAB/TUEV subjects too; preserving the old official test split is superseded by Navid's new split request |
 | Integrity | Subjects and unresolved duplicate groups must not cross partitions; every evaluated class must be present |
-| Preprocessing | Native preparation uses the recorded raw preprocessing profile. Selected processed releases preserve values and physical channel order; float32 casting only, with upstream history recorded as unverified |
+| Preprocessing | Native preparation uses EEG-X2 QuantPlus: native reference, no additional notch, high-pass 0.5 Hz, low-pass 45 Hz, resample 128 Hz, per-recording/channel StandardScaler, clip ±15 and float32. Selected processed releases preserve their saved values |
 | Artifact-removal policy | Add no local rASR; upstream non-rASR proof is optional |
 | Processed inputs | Use stored signals, labels and participant IDs from the selected artifact; reject incompatible shape, missing subjects, invalid labels or changed artifact hashes |
-| Duplicate policy | Reconcile duplicates and retained counts with the processed release before freezing exclusions; document exclusions before freezing the new datasets |
+| Duplicate policy | Retain reference multiplicity and group subjects linked by full-record or emitted-window signal hashes; reject any saved bank splitting a linked group |
 
-New split manifests must be immutable and versioned. Missing participant or label evidence blocks the affected task.
+HDF5 datasets and their persisted split banks must be immutable and versioned. Missing participant or label evidence blocks the affected task.
 
-Publish prepared manifests only after label/subject checks and release metadata are finalized. Upstream non-rASR history is optional. No persistent task state is created.
+Publish the HDF5 file atomically after label, subject-group, reference-count and class-coverage checks. Original overlap and repeated annotations remain valid samples. Upstream non-rASR history is optional. No persistent task state is created.
+
+YAML defaults to paper intent and requires a complete verified reference catalog.
+Explicit engineering intent supports pilot checks and stays recorded in the run.
+Paper downstream evaluation requires a paper-pretrained source checkpoint; an
+engineering checkpoint cannot become a paper source.
+
+## HDF5 storage and loading
+
+The preparation entrypoint writes one dataset file with prepared window tensors,
+labels, record/subject provenance, physical channel names/IDs/XYZ, exclusions and
+stable window identities. All seed split arrays are stored in that same file.
+The shared TUAB source has its own train/validation bank without copying signals.
+Training selects a stored bank and writes only a run-level provenance report.
+Established original-array row mappings, ambiguity sets and reference artifact
+hashes are embedded in the HDF5 metadata. The reader validates their complete
+native-crop coverage and source hashes. Mapped native generation requires the
+verified lineage input; training needs no proof sidecar.
+
+Window and recording identities exclude host paths and split seeds. Canonical
+record/window ordering makes regenerated row indices independent of source
+iteration order. The reader validates metadata and index hashes, reads windows
+lazily, and opens HDF5 handles per worker process. It performs no signal transforms.
 
 ## Target model flow
 
@@ -90,7 +120,7 @@ flowchart TD
     PRED --> LOSS
     ENC -->|Evaluation| POOL["Mean patch features"]
     POOL --> IN["In-domain: tune tokenizer + encoder + classifier"]
-    POOL --> CROSS["Cross-domain: freeze tokenizer + encoder; fit classifier"]
+    POOL --> CROSS["Cross-domain: linear probe and independent full fine-tuning"]
     IN --> PROB["Class probabilities; argmax label"]
     CROSS --> PROB
 ```
@@ -129,10 +159,12 @@ Compare the reconstructed waveform with a detached target. Keep the feature tran
 | Logical pretraining batch | Minimum of 256 and available training windows; benchmark and record the microbatch for each input size; keep incomplete batches |
 | Precision | BF16 autocast, FP32 loss reductions and Hydra, TF32 matmul; record effective settings |
 | Soft DiCT defaults | Weight 1, temperature 1, 32 kernels per group, 8 groups, lengths 9/15, dilations 1/2/4/8/16; FP32 soft counts and MSE; fixed seeded channelwise filters |
-| Fine-tuning | Train the tokenizer, encoder, and classifier together; select highest validation balanced accuracy |
+| Fine-tuning | Train tokenizer, encoder and classifier for at most 20 epochs; select highest validation balanced accuracy; stop after 5 checks without improvement |
 | Supervised optimizer/scheduler | AdamW, learning rate 1e-3, betas (0.9, 0.999), weight decay 0.01 for matrices and zero otherwise; layer learning-rate decay 0.75, warmup 5 epochs then cosine to 1e-6, gradient clipping 1; RMSNorm, dropout 0.1, linear classifier; cross entropy without label smoothing |
-| Frozen classifier default | Train-only StandardScaler and logistic regression, C=1, L2, LBFGS, maximum iterations 1,000,000 |
-| Training-time probes | Every 10 epochs and at the selected checkpoint; fit scaler and classifier on training subjects only |
+| Linear-probe classifier default | Frozen encoder; train-only StandardScaler; linear head, AdamW LR 1e-3 and weight decay 0.01; at most 20 epochs; select highest validation balanced accuracy; stop after 5 checks without improvement |
+| Training-time probes | Every 10 epochs and at the selected checkpoint; fit scaler and classifier on training subjects only; validation/test curves belong to the same pretraining W&B run |
+| Standalone linear probes | Cross-domain experiments only in the agreed paper workflow; reuse one shared TUAB checkpoint with the matching architecture |
+| Fine-tuning reporting | Validation curves each epoch; select best validation balanced accuracy, lock the checkpoint, then evaluate test once |
 | Test probe request | Log test curves for intuition only; never use them for checkpoint selection, early stopping, thresholds, or hyperparameter changes |
 
 Pin these choices before inspecting test curves. If test feedback guides a change, treat that split as development data and obtain a fresh untouched holdout for the paper.
@@ -141,20 +173,20 @@ Pin these choices before inspecting test curves. If test feedback guides a chang
 
 | Output | Contract |
 |---|---|
-| Binary classification | Balanced accuracy and AUROC; AUROC uses class 1 probability |
-| Multiclass classification | Balanced accuracy and F1 weighted by test class frequency |
+| Binary classification | Headline balanced accuracy and AUROC; also log accuracy, class-1 F1, F1 micro/macro/weighted, macro precision and recall, AUPRC and loss; AUROC/AUPRC use class 1 probability |
+| Multiclass classification | Headline balanced accuracy and F1 weighted by test class frequency; also log accuracy, F1 micro/macro, macro precision and recall, macro one-vs-rest AUROC/AUPRC and loss |
 | Reporting unit | Pool windows across held-out subjects; do not average subject scores |
-| Scale | Classification metrics 0-1, higher is better; reconstruction MSE lower is better |
+| Scale | Accuracy, F1, precision, recall and AUC scores are 0-1, higher is better; classification loss and reconstruction MSE are nonnegative, lower is better |
 | Repeated runs | Publish each seed; mean and sample standard deviation only after all 5 seeds complete |
-| Final evaluation | Use validation-selected checkpoints and a fixed classifier recipe; keep diagnostic curves separate from final test metrics |
-| W&B | Log model name, task name, stage, recipe and seed; online resume reuses the saved run ID |
-| Grouping | W&B groups by model and task; filter to one stage and recipe and include distinct completed seeds |
+| Final evaluation | Linear probes and fine-tuning maximize validation balanced accuracy; retain the first checkpoint on ties; early stopping follows the same metric. Pretraining minimizes validation reconstruction loss. Test evaluates the locked checkpoint once; final scalar test metrics are summary-only bars, without an epoch axis |
+| W&B | Log model name, task name, stage, evaluation mode, recipe and seed; online resume reuses the saved run ID |
+| Grouping | No preset grouping. User chooses domain, stage and task in W&B; filter to one model and recipe and include distinct completed seeds |
 
 Balanced accuracy is mean recall across classes. Report the architecture, split, seed, and evaluation mode beside every result.
 
-| Paper scope, subject to source availability | Pretraining | In-domain fine-tuning | Cross-domain frozen classifiers |
-|---|---:|---:|---:|
-| Primary architecture: depth 8, width 64 | 20 | 20 | 15 |
+| Paper scope, subject to source availability | In-domain pretraining | In-domain fine-tuning | Shared TUAB source | Cross-domain linear probes | Cross-domain fine-tuning | Total |
+|---|---:|---:|---:|---:|---:|---:|
+| Primary architecture: depth 8, width 64 | 20 | 20 | 1 | 20 | 20 | 81 |
 
 These counts describe paper scope, not a scheduled job matrix or completed results. Missing data and budget limits remain explicit.
 
@@ -176,6 +208,7 @@ Implementation and checks must live in this repository. Keep failed and incomple
 | Shared GPU budget | 72 GPU-hours across all local experiments and revised runs; carry the existing ledger without resetting it |
 | Setup accounting | Charge 300 seconds once when creating a new budget ledger; preserve existing ledgers without a second setup debit |
 | Device | Physical GPU 1 for paper studies; user-requested bounded training checks may select physical GPU 0 with explicit shared mode; never stop unrelated workloads |
+| Concurrent tasks | User-selected four dataset pipelines on physical GPU 1; seeds stay sequential within each pipeline. Explicit shared mode and concurrent_gpu_runs: 4 admit four leases. Charge occupied time once for the single GPU, retaining all earlier usage |
 | Storage | Work volume for code, environment, caches, data, and outputs; retain the home compatibility symlink |
 | Isolation | Fresh output per direct YAML run; preserve safe progress on stop |
 | Frozen evidence | Source revision, uv lockfile, resolved configuration, preprocessing, channel vocabulary, participant splits, data hashes, checkpoints, predictions, metrics, and exclusions |

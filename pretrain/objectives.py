@@ -41,7 +41,8 @@ def validate_objective(objective):
     for key in ("kernel_sizes", "dilations"):
         values = objective[key]
         if (
-            not isinstance(values, (list, tuple)) or not values
+            not isinstance(values, (list, tuple))
+            or not values
             or any(type(value) is not int or value < 1 for value in values)
             or len(set(values)) != len(values)
         ):

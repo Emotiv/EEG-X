@@ -1,7 +1,7 @@
 # Supplied EEG-X manuscript check
 
-Checked the author-supplied manuscript locally, including the rendered architecture
-and scaling table. The manuscript is not included in this code release. This supersedes the earlier
+Checked the [supplied manuscript](../1861_EEG_X_Toward_Device_Agnos.pdf), including
+the rendered architecture and scaling table. This supersedes the earlier
 comparison with the public arXiv version. The user subsequently selected the proposal
 as the local default; the last column records that selection.
 

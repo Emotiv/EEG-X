@@ -7,5 +7,14 @@ __pycache__/
 .runs/
 *.pth
 *.pt
+*.h5
+*.hdf5
+*.h5.working
+*.h5.partial
 wandb/
+*.hdf5.working
+*.hdf5.partial
+.DS_Store
 1861_EEG_X_Toward_Device_Agnos.pdf
+Checkpoints/
+Results_for_Paper/

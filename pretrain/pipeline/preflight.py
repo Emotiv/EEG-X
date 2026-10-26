@@ -11,9 +11,9 @@ from pretrain.pipeline.data import Windows, collate
 from pretrain.models.factory import Classifier, create_model, masks
 
 
-def check(manifest):
+def check(dataset):
     torch.set_num_threads(2)
-    train = Windows(manifest, "train")
+    train = Windows(dataset, "train")
     batch = collate([train[0], train[min(1, len(train) - 1)]])
     samples = train.metadata["window_samples"]
     output = []
@@ -61,9 +61,9 @@ def check(manifest):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", required=True)
+    parser.add_argument("--dataset", required=True)
     args = parser.parse_args()
-    print(json.dumps(check(args.manifest)))
+    print(json.dumps(check(args.dataset)))
 
 
 if __name__ == "__main__":

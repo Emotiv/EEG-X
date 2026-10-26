@@ -1,8 +1,10 @@
 """Read GPU availability without changing other workloads."""
 
 import os
+from contextlib import contextmanager
 from pathlib import Path
 import subprocess
+import time
 
 
 class GpuBusy(RuntimeError):
@@ -64,3 +66,33 @@ def available_gpu(physical_gpu=0, *, allow_busy=False):
     ):
         raise GpuBusy(f"Physical GPU {physical_gpu} is busy; leave unrelated work running")
     return state["uuid"]
+
+
+@contextmanager
+def record_runtime(output, physical_gpu, before, tracker=None):
+    """Measure this process's CUDA allocation separately from shared device use."""
+    import torch
+
+    from pretrain.metadata import atomic_json
+
+    torch.cuda.reset_peak_memory_stats()
+    started = time.perf_counter()
+    try:
+        yield
+    finally:
+        values = {
+            "runtime/wall_seconds": time.perf_counter() - started,
+            "runtime/peak_allocated_gib": torch.cuda.max_memory_allocated() / 2**30,
+            "runtime/peak_reserved_gib": torch.cuda.max_memory_reserved() / 2**30,
+        }
+        atomic_json(
+            Path(output) / "gpu.json",
+            {
+                "physical_gpu": physical_gpu,
+                "before": before,
+                "after": gpu_snapshot(physical_gpu),
+                **values,
+            },
+        )
+        if tracker:
+            tracker.summary(values)

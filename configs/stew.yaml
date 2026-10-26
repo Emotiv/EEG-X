@@ -1,6 +1,5 @@
-# User-selected processed STEW release; signals and stored labels are preserved.
-manifest: ../.runs/data/stew-processed-v1/manifest.json
-output: ../.runs/stew-eegx-d8w64
+dataset: ../.runs/data/stew.h5
+output: ../.runs/paper-v1/in_domain/stew/pretrain
 stage: pretrain
 checkpoint: null
 device: cuda:1
@@ -56,7 +55,18 @@ probe_interval: 10
 diagnostic_test_probes: true
 wandb:
   enabled: true
-  project: eeg-x
-  entity: null
+  project: eegx
+  domain: in_domain
+  entity: quoc-emotiv
   group: null
   mode: online
+  name: EEG-X--in_domain--stew--pretrain--seed-{seed}
+linear_probe:
+  epochs: 20
+  patience: 5
+  min_delta: 0.0
+  lr: 0.001
+  batch_size: 64
+purpose: paper
+shared_gpu: true
+concurrent_gpu_runs: 4

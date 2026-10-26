@@ -36,14 +36,14 @@ CHANNELS = [
 
 
 class Bciciv:
-    task, window_samples, channels = "bciciv_2a", 512, CHANNELS
+    task, window_samples, channels = "bciciv_2a", 256, CHANNELS
     label_evidence = {
         "status": "verified",
         "kind": "official_trial_annotations",
-        "classes": {"0": "left_hand", "1": "right_hand", "2": "feet", "3": "tongue"},
+        "classes": {"0": "feet", "1": "left_hand", "2": "right_hand", "3": "tongue"},
         "source": "https://www.bbci.de/competition/iv/desc_2a.pdf",
         "mat_authority": "https://raw.githubusercontent.com/NeuroTechX/moabb/v1.2.0/moabb/datasets/bnci.py",
-        "crop_seconds_after_trial_start": [2, 6],
+        "crop_seconds_after_trial_start": [2, 4],
         "trial_indices": "one_based",
         "sessions": "T and E remain with the same native participant",
         "artifact_flags": "retain all annotated trials; no primary artifact rejection",
@@ -81,7 +81,10 @@ class Bciciv:
                 # Preprocess each acquisition run before cutting windows. Offsets map
                 # native one-based trial starts onto the pinned resampled timeline.
                 events = [
-                    (int(round(((onset - 1) / rate + 2) * 128)), int(label - 1))
+                    (
+                        int(round(((onset - 1) / rate + 2) * 128)),
+                        {1: 1, 2: 2, 3: 0, 4: 3}[int(label)],
+                    )
                     for onset, label in zip(trials, labels, strict=True)
                 ]
                 yield {

@@ -1,5 +1,161 @@
 # EEG-X reproduction: selected defaults
 
+The latest author-confirmed protocol below takes precedence over earlier local
+choices. The user resumed implementation to populate W&B with bounded, real-data
+review runs before the full paper experiments. These review runs use reduced data
+and a shorter pretraining horizon; they do not supply paper scores.
+
+The public stage name for linear probing is `linear_probe` in YAML and W&B.
+The same name appears in W&B Job Type and tracking records.
+
+## Latest raw-data preparation decision
+
+The confirmed next revision restores the original sample-selection rules while
+replacing signal preprocessing with the EEG-X2 QuantPlus recipe. The saved
+processed NPY datasets define the target sample counts and crops. Archived scripts
+supply reconstruction evidence; they are not authoritative when they disagree with
+the saved artifacts. Keep the agreed classification tasks, including binary
+DREAMER arousal and binary TUEV.
+
+| Part | Confirmed requirement |
+|---|---|
+| Sampling | Restore original crop lengths, strides, overlap and sample multiplicity. Overlapping windows are valid separate samples. |
+| Preprocessing | Preserve native reference; high-pass 0.5 Hz and low-pass 45 Hz; resample from the actual native rate to 128 Hz; per-record/channel StandardScaler; clip at ±15; store float32. Add neither notch nor average reference. |
+| Repeated signals | Retain the reference multiplicity. Keep duplicate-linked subjects together in a partition, so subject ratios may be approximate. Do not silently remove samples to deduplicate the release. |
+| Target splits | Preserve the five subject-wise banks, seeds 241–245, with target ratio 70/10/20. Group linked subjects before assigning roles. |
+| TUAB source split | Preserve the separate subject-wise 80/20 source train/validation bank. |
+| Crowdsourced exception | Correct actual sampling-rate timing and use true two-second windows. Keep windows within continuous acquisition blocks and one label interval. Restore overlap, but report resulting count differences from the old concatenation/majority-label catalog. |
+| PhysioNet timing correction | Preserve the proven event catalog, including later short rest annotations, and omit the initial event. Historical fixed 320-native-sample crops become true 2-second model windows at actual native rates; preserve exact reference class totals. |
+| Missing raw mapping | Leave the affected dataset unresolved and report the mismatch. Do not guess crop offsets, insert windows or silently substitute another signal release. Other verified datasets may proceed. |
+| Storage | One HDF5 per dataset, containing signals, labels, record/subject/channel metadata, source hashes, stable sample identities and saved split indices. Preserve original-row provenance where established. |
+
+These choices were confirmed in the requirements interview. Correct physical timing
+and the explicit Crowdsourced boundary exception take priority over matching an
+old count. Other count differences require investigation and an explicit report.
+
+| Saved reference | Target sample count | Reconstruction status |
+|---|---:|---|
+| DREAMER arousal | 170,246 | Original stride reproduces the count exactly; convert ratings using the agreed binary task rule. |
+| STEW | 56,928 | Original stride reproduces the count exactly. |
+| TUAB | 409,455 | Original window catalog established; retain reference multiplicity. |
+| TUEV binary | 98,684 | Binary annotation-crop replay reproduces the count and class counts exactly. |
+| Crowdsourced | 13,363 | Original selection replay matches; the confirmed timing/boundary exception requires a new measured count. |
+| BCICIV-2a | 5,184 | Complete original waveform replay verifies the 2-second crop: native MAT trial index minus 1, then +500 samples at 250 Hz. Preserve feet/left/right/tongue label IDs. |
+| Kalunga / SSVEP | 960 | Complete original waveform replay verifies the pinned MOABB 30-run selection. Retain corrected physical frequency labels and record the legacy 17/21 Hz name mismatch. |
+| PhysioNetMI | 19,022 | Complete original waveform replay verifies all 19,022 rows. Omit the initial event, retain later annotations, and use the proven 320-native-sample eligibility with the explicit timing correction. |
+
+The reference counts combine the old training, validation and test arrays. They do
+not preserve the old partitions; the new subject banks determine membership.
+
+Implementation now covers every verified reference catalog and groups duplicate-linked
+subjects. All datasets are regenerated and audited. Every established original-array row mapping, raw bound, grouped split and reference count passed validation.
+Established original-array row lineage and artifact hashes are embedded in the
+mapped datasets and validated before publication. The earlier non-overlap release is archived; its
+audit applies only to its recorded protocol. The
+[dataset preparation plan](dataset-preparation.md) describes the implemented rules; the [signal review](notch-reference-review.md) supports the retained
+preprocessing choices. Update code, regenerate affected datasets and audit counts,
+class mappings and grouped subject splits after implementation begins.
+
+## Latest author-confirmed protocol
+
+| Setting | In-domain | Cross-domain |
+|---|---|---|
+| Datasets | DREAMER arousal, STEW, TUAB, TUEV_binary | Crowdsourced, BCICIV-2a, SSVEP/Kalunga, PhysioNetMI |
+| Subject splits | Five independent train/validation/test splits per dataset | Five independent target train/validation/test splits per dataset |
+| Target split ratio | 70% / 10% / 20%, subject-wise | 70% / 10% / 20%, subject-wise |
+| Pretraining source | Each dataset's training subjects | TUAB training subjects, with a separate TUAB validation set |
+| Pretraining runs | Five fresh models per dataset | One TUAB model shared by every target dataset and target seed |
+| Pretraining horizon | 100 epochs | 100 epochs |
+| Pretraining checkpoint | Lowest validation reconstruction loss | Lowest TUAB validation reconstruction loss |
+| Training-time linear probes | Every 10 pretraining epochs, with validation and diagnostic test curves in the same run | No target probe schedule during source pretraining was requested |
+| Selected-checkpoint probe | Run again after loading the validation-selected checkpoint | Fit separately on every target split using the shared TUAB checkpoint |
+| Linear-probe horizon | At most 20 epochs per fit | At most 20 epochs per fit |
+| Fine-tuning horizon | At most 20 epochs per run | At most 20 epochs per run |
+| Probe/fine-tuning early stopping | Patience 5 validation checks without improvement | Patience 5 validation checks without improvement |
+
+The author confirmed the horizons, subject-wise target ratios, validation for TUAB
+pretraining, and a shared source model. The proposed TUAB source ratio is recorded
+below as a remaining detail rather than an explicit author confirmation.
+
+For each in-domain split, pretrain only on training subjects. Fit each linear probe
+with the encoder frozen. Save the best reconstruction checkpoint using validation
+loss, probe that checkpoint again, and start fine-tuning from the same checkpoint.
+Test curves cannot select checkpoints or training settings. The latest user clarification selects each
+linear head and fine-tuned model by validation balanced accuracy. Pretraining
+continues to select the encoder by validation reconstruction loss.
+
+For cross-domain experiments, pool the selected TUAB release before assigning its
+source training and validation subjects. Pretrain once and reuse the selected
+encoder. For each target split, start linear probing and fine-tuning independently
+from that shared encoder. Fit probes and fine-tuning only on target training
+subjects. Reuse the same target split across both methods. Select downstream
+checkpoints on validation, then evaluate the selected checkpoint on test once.
+
+| Seed role | Selected values | Meaning |
+|---|---|---|
+| In-domain split/training seeds | 241, 242, 243, 244, 245 | Fresh split and fresh pretrained model for each dataset and seed |
+| Cross-domain target seeds | 241, 242, 243, 244, 245 | Target splits and downstream randomness; the source encoder stays unchanged |
+| Cross-domain TUAB source seed | 241, existing local default | Reproducibility seed for the shared source run; no matching target seed is required |
+
+Subject separation prevents overlap within a split. These are repeated subject
+holdouts, not disjoint cross-validation folds. Report all completed target seeds
+and their mean and sample standard deviation.
+
+| Remaining detail or implementation gap | Status |
+|---|---|
+| TUAB source train/validation ratio | 80% / 20%, subject-wise, was proposed; the author confirmed a validation set without restating the exact ratio |
+| Probe/fine-tuning stopping metric | Latest user decision: maximize validation balanced accuracy (`val/bal_acc`) for both linear probes and fine-tuning; minimum improvement zero; retain the first checkpoint on ties |
+| Epoch-based linear probes | Implemented: frozen encoder, train-only feature scaler, linear head with AdamW, validation selection and patience |
+| PhysioNetMI | Complete native HDF5 release verified: 109 subjects, 654 imagery EDFs, 64 physical channels and saved subject-wise banks; participant identities come from native filenames |
+| Shared source selection | Implemented TUAB train/validation split and best validation-loss checkpoint; the superseded full-source/final-epoch mode is removed |
+
+These details do not change the confirmed experiment structure. Full-data runs
+and complete downstream source evidence are still required for paper results.
+
+| Planned runs for the primary model | Count | Epoch limit per run |
+|---|---:|---:|
+| In-domain pretraining | 20 | 100 |
+| In-domain fine-tuning | 20 | 20 |
+| Shared TUAB source pretraining | 1 | 100 |
+| Cross-domain linear probes | 20 | 20 |
+| Cross-domain fine-tuning | 20 | 20 |
+| Total independently tracked runs | 81 | Not applicable |
+
+In-domain probe fits stay inside pretraining runs and do not add independently
+tracked runs. The counts cover the primary model without ablations or baselines.
+
+## W&B native grouping
+
+Keep all experiments in the same W&B project. Each seed logs its own run and
+metrics. W&B performs seed aggregation; the repository needs no aggregation script
+or extra summary run.
+
+| Item | Requirement |
+|---|---|
+| Project | `eegx` |
+| Default display | Individual runs; no preset run groups or composite group names |
+| Manual grouping | Choose `task_name` in W&B when needed; use stage/domain filters to select the intended experiment |
+| Domains | `in_domain`, `cross_domain` |
+| Domain logging | Set `wandb.domain` per configuration; save it in run config, tracking records and model artifact metadata |
+| Stages | `pretrain`, `linear_probe`, `finetune` |
+| Embedded probe sections | `linear_probe/val` and `linear_probe/test`, inside the pretraining run; test curves remain diagnostic |
+| Repeated runs | 5 distinct completed seeds per target experiment; keep test and incomplete runs out of paper averages |
+| Curves | Use W&B grouping with mean aggregation; optional standard-deviation shading |
+| Final scores | Evaluate the validation-selected checkpoint once per run; write scalar test metrics only to W&B summary, then display one bar per run. Seed grouping uses these summaries; diagnostic probes keep separate epoch curves |
+| Test metrics | Accuracy, balanced accuracy, F1 micro/macro/weighted, macro precision and recall, AUROC, AUPRC and classification loss; binary tasks also report positive-class F1 |
+| Selection record | Log the metric and direction in W&B and checkpoint records; downstream selection maximizes `val/bal_acc` |
+| Classifier workspace | Match Neuralbench DREAMER valence in both fine-tuning domains; use actual optimizer names, epoch, best_epoch and trainer/global_step. Native bars use bare summary metric keys. Pretraining adds diagnostic probe trends |
+| System and console logs | Enable native W&B system monitoring for every tracked run; show resource metrics in System and stdout/stderr in Logs |
+| Model and optimization details | Log total/trainable parameters, fine-tuning learning rates, classification loss and selected checkpoint epoch |
+| Confusion matrices | Log validation and final test matrices as images, matching Neuralbench; no raw confusion-matrix tables; embedded probes keep validation and diagnostic test outputs separate |
+| Selected model artifacts | Upload the validation-selected pretraining and fine-tuning checkpoints with the best alias and their selection metadata |
+| Shared TUAB source | 1 source run reused by downstream experiments; no source seed average |
+
+Grouping is chosen in W&B rather than assigned automatically by the script.
+Keep the same model, domain, stage and recipe when averaging the selected seeds.
+
+## Retained local model and optimizer choices
+
 The user selected the defaults below. The goal remains reproducible
 EEG-X evaluation with measured replacement results. The fallback column is retained
 for author discussion; it does not require another approval before engineering work.
@@ -18,16 +174,16 @@ removed. Study planning and orchestration have been removed; W&B groups the inde
 | Masking | Section 2: MAE encoder sees visible tokens; decoder reconstructs masked regions. Sampler and ratio not mentioned; SSP not mentioned. | Reproducible random-token masking, 75% | Your preferred sampler/ratio |
 | DiCT | Section 2.3: argmax winner counts. B.3: G=8, K=32; kernels 9/15; dilations 1/2/4/8/16. Soft routing not mentioned. | Soft routing; preserve paper dictionary | Your corrected soft DiCT |
 | Positions | Equation 3: separable XY sin/cos, frequency base 1000. | EEG-X2 normalized XYZ, base 5 | Paper XY encoding |
-| Targets | Section 2.2: rASR-cleaned targets. C.4 still describes ICA. | Use selected processed X arrays unchanged for input/target; no added rASR; upstream proof waived | Restore rASR-cleaned targets |
+| Targets | Section 2.2: rASR-cleaned targets. C.4 still describes ICA. | Use the native EEG-X2-preprocessed HDF5 X arrays for input/target; no added rASR; historical imports keep their recorded recipe | Restore rASR-cleaned targets |
 | Training | C.2: Adam, LR 1e-3, cosine, batch 256, 300/10 epochs. Separate fine-tuning optimizer not mentioned. | StableAdamW/AdamW + warmup/cosine; 100/20 epochs | Paper training recipe |
-| Splits | C.4: official TUH splits; other datasets use 20% subject-wise test data. Seeds and validation ratio not mentioned. | Five pooled subject splits, 70/10/20 | Your preferred split ratio |
+| Splits | C.4: official TUH splits; other datasets use 20% subject-wise test data. Seeds and validation ratio not mentioned. | Subject-wise target holdouts as confirmed above; shared TUAB source has a separate train/validation assignment | Your preferred source split ratio |
 | Teacher | Section 2: MAE encoder/decoder. EMA teacher and latent prediction losses not mentioned for EEG-X. | No EMA teacher; keep trainable Predictor | Plain MAE without Predictor |
 | Tokenizer/loss | Section 2.1/C.1: STFT projection, patch 128, overlap 32. Equation 7: DiCT feature MSE; extra raw MSE not mentioned. | Raw+STFT; patch 32, no overlap; raw + soft DiCT MSE | Paper tokenizer; soft DiCT only |
 
 Epoch pairs mean pretraining/fine-tuning. Deliberate differences from the manuscript
 are recorded in the [paper review](paper-review.md).
 
-These defaults implement the user's selection. They must not be represented as
+These defaults record the user's selection. They must not be represented as
 identical to every manuscript setting or as completed paper results. Soft routing
 and repeated subject splits also have prior author support.
 
@@ -40,7 +196,7 @@ Exact current training settings:
 
 These are saved settings, not manuscript-specified settings for both stages.
 
-Five-seed protocol:
+In-domain seed bank:
 
 | Seed | Subject assignment | Execution |
 |---|---|---|
@@ -56,8 +212,22 @@ seed. Subjects cannot cross roles inside a run,
 but may change roles between runs. These are repeated subject holdouts, not disjoint
 cross-validation folds. Report every result and the mean and sample standard
 deviation; do not select the best seed. This measures combined split and training
-variability. Test probes remain diagnostic. Cross-domain evaluation uses the TUAB
-checkpoint with the matching seed and size.
+variability. Test probes remain diagnostic. Cross-domain target seeds reuse the
+shared TUAB checkpoint with the matching architecture, independently of its source seed.
+
+Evaluation summary:
+
+| Stage | Agreed behavior |
+|---|---|
+| In-domain pretraining | Fresh models for the target seed bank; linear-probe validation and diagnostic test trend lines inside each pretraining run |
+| Cross-domain pretraining | Shared TUAB model with validation-based checkpoint selection |
+| In-domain evaluation | Fine-tuning validation trend lines; select the best validation checkpoint, then compute the final test score once |
+| Standalone linear probes | Cross-domain experiments only; use the shared TUAB encoder |
+| Cross-domain fine-tuning | Fine-tune the shared encoder separately on every target split |
+| Leakage control | Persist subject-separated splits and train only on training subjects; additional seeds alone do not establish separation |
+
+In-domain linear probes do not create separate runs. Test trend lines monitor
+representation quality and cannot select checkpoints or training settings.
 
 EEG-X2 history check:
 
@@ -71,14 +241,25 @@ Its learned-lookup comparison arm is separate; the selected encoding is fixed.
 
 Work sequence:
 
+The user expanded execution to four dataset pipelines on each of two physical
+GPUs. GPU one retains seeds 241 through 243; GPU zero takes 244 and 245 and the
+single shared TUAB source. Keep each cohort sequential and every logical output
+unique. Preserve checkpoint progress and the frozen scientific source. Transfer ownership
+through verified checkpoint resume into fresh attempt directories; do not retire
+parents of live training processes.
+Each target cohort waits for successful source finalization. The unchanged
+aggregate GPU-hour cap covers both devices; the auxiliary GPU-zero ledger is
+only a usage meter. Root operational scripts manage this fixed handoff and
+accounting, without a model sweep or local seed-aggregation controller.
+
 - [x] Inspect the latest manuscript and scaling table.
 - [x] Check retained EEG-X2 spatial encoding and current teacher behavior.
 - [x] Save resolved settings and verify interrupted-run checkpoint integrity.
 - [x] Apply the user-selected defaults and update the detailed specification.
 - [x] Wire the versioned defaults through YAML training, checkpoints, and exports.
-- [x] Check real EEG pretraining, fine-tuning, frozen evaluation, and encoder export/reload.
-- [ ] Record selected artifacts, labels, subjects, and duplicate exclusions; upstream non-rASR proof is not required.
-- [ ] Freeze source revision, environment, split bank, and experiment settings.
+- [x] Check real EEG pretraining, fine-tuning, linear-probe evaluation, and encoder export/reload.
+- [x] Record selected artifacts, labels, subjects, and duplicate exclusions; upstream non-rASR proof is not required.
+- [x] Freeze source revision, environment, split bank, and experiment settings.
 - [ ] Run the primary model and regenerate prediction-backed paper tables.
 
 The [paper review](paper-review.md) records manuscript evidence. Train from scratch
@@ -86,4 +267,7 @@ in fresh output directories; historical checkpoint compatibility is outside scop
 checkpoints for reproducible resume and keep the existing shared budget ledger.
 Keep all work local until publication is explicitly requested.
 
-Current STEW source: use the user-selected processed STEW.npy file, its saved binary labels and stored participant IDs. Preserve X values without filtering or normalization, apart from float32 conversion. Record that the original rating threshold and upstream artifact-removal history were not re-derived.
+Current native release: prepare raw sources with the documented EEG-X2 recipe
+and write one HDF5 file per dataset. Historical processed releases remain explicit
+imports with their own recorded preprocessing; they are not relabelled as the new
+native release. STEW and PhysioNet default to complete raw subject scopes.

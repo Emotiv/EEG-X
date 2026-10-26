@@ -7,6 +7,9 @@ from sklearn.metrics import (
     average_precision_score,
     balanced_accuracy_score,
     f1_score,
+    log_loss,
+    precision_score,
+    recall_score,
     roc_auc_score,
 )
 
@@ -48,17 +51,23 @@ def classification(labels, probabilities):
     output = {"balanced_accuracy": float(balanced_accuracy_score(labels, probabilities.argmax(-1)))}
     predictions = probabilities.argmax(-1)
     output.update(
+        loss=float(log_loss(labels, probabilities)),
         acc=float(accuracy_score(labels, predictions)),
         f1_score_micro=float(f1_score(labels, predictions, average="micro", zero_division=0)),
         f1_score_macro=float(f1_score(labels, predictions, average="macro", zero_division=0)),
+        weighted_f1=float(f1_score(labels, predictions, average="weighted", zero_division=0)),
+        precision_macro=float(
+            precision_score(labels, predictions, average="macro", zero_division=0)
+        ),
+        recall_macro=float(recall_score(labels, predictions, average="macro", zero_division=0)),
     )
     if classes == 2:
+        output["f1_score_binary"] = float(
+            f1_score(labels, predictions, average="binary", pos_label=1, zero_division=0)
+        )
         output["auroc"] = float(roc_auc_score(labels, probabilities[:, 1]))
         output["auprc"] = float(average_precision_score(labels, probabilities[:, 1]))
     else:
-        output["weighted_f1"] = float(
-            f1_score(labels, probabilities.argmax(-1), average="weighted")
-        )
         output["auroc"] = float(
             roc_auc_score(labels, probabilities, multi_class="ovr", average="macro")
         )

@@ -8,7 +8,7 @@ import numpy as np
 from scipy.io import savemat
 
 from pretrain.pipeline.adapters.bciciv import Bciciv
-from pretrain.pipeline.adapters.kalunga import CHANNELS, Kalunga
+from pretrain.pipeline.adapters.kalunga import CHANNELS, RUN_COUNTS, Kalunga
 from pretrain.pipeline.download import digest
 from pretrain.channel_identity import sha256_file
 from pretrain.pipeline.adapters.crowdsourced import Crowdsourced, CHANNELS as EPOC_CHANNELS
@@ -67,7 +67,9 @@ def test_bci_native_units_labels_and_one_based_source_onsets(tmp_path):
     adapter = Bciciv(tmp_path)
     item = next(adapter.recordings())
     assert item["subject"] == "01"
-    assert item["events"] == [(256, 0), (768, 3)]
+    assert item["events"] == [(256, 1), (768, 3)]
+    assert adapter.window_samples == 256
+    assert adapter.label_evidence["classes"]["0"] == "feet"
     np.testing.assert_allclose(item["volts"], signal[:, :22].T * 1e-6)
 
 
@@ -81,16 +83,16 @@ def test_kalunga_preserves_author_codes_and_source_event_offsets(tmp_path):
     )
     path = tmp_path / "subject01_run1_raw.fif"
     raw.save(path, overwrite=False, verbose=False)
-    (tmp_path / "record.json").write_text(
-        json.dumps(
-            {
-                "id": 2392979,
-                "files": [
-                    {"key": path.name, "size": path.stat().st_size, "checksum": digest(path)}
-                ],
-            }
-        )
-    )
+    files = []
+    for subject, count in enumerate(RUN_COUNTS, 1):
+        for run in range(1, count + 1):
+            target = tmp_path / f"subject{subject:02d}_run{run}_raw.fif"
+            if target != path:
+                target.write_bytes(path.read_bytes())
+            files.append(
+                {"key": target.name, "size": target.stat().st_size, "checksum": digest(target)}
+            )
+    (tmp_path / "record.json").write_text(json.dumps({"id": 2392979, "files": files}))
     adapter = Kalunga(tmp_path)
     item = next(adapter.recordings())
     assert item["subject"] == "01"

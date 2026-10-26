@@ -1,0 +1,36 @@
+dataset: ../.runs/data/kalunga.h5
+output: ../.runs/paper-v1/cross_domain/kalunga/linear_probe
+stage: linear_probe
+checkpoint: ../.runs/paper-v1/cross_domain/tuab/pretrain/training/best.pth
+device: cuda:1
+budget: ../.runs/paper-gpu1-v1
+depth: 8
+width: 64
+heads: 8
+seeds:
+- 241
+- 242
+- 243
+- 244
+- 245
+epochs: 20
+warmup_epochs: 0
+precision: bf16
+logical_batch: 64
+microbatch: 16
+workers: 2
+probe_interval: 0
+early_stopping:
+  patience: 5
+  min_delta: 0.0
+wandb:
+  enabled: true
+  project: eegx
+  domain: cross_domain
+  mode: online
+  entity: quoc-emotiv
+  group: null
+  name: EEG-X--cross_domain--kalunga--linear_probe--seed-{seed}
+purpose: paper
+shared_gpu: true
+concurrent_gpu_runs: 4

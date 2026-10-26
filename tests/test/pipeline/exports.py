@@ -1,4 +1,5 @@
 import json
+import h5py
 
 import pytest
 import torch
@@ -26,14 +27,16 @@ def test_release_encoder_round_trip_matches_selected_weights(tmp_path, monkeypat
         if torch.is_tensor(value):
             torch.testing.assert_close(value, restored.state_dict()[name], rtol=0, atol=0)
     assert (tmp_path / "release" / "checksums.json").exists()
-    original = manifest.read_bytes()
-    changed = json.loads(original)
-    changed["preprocessing"]["clip"] = 100
-    manifest.write_text(json.dumps(changed))
-    with pytest.raises(ValueError, match="manifest differs"):
+    with h5py.File(manifest, "r+") as handle:
+        original = handle["metadata"].asstr()[()]
+        changed = json.loads(original)
+        changed["preprocessing"]["clip"] = 100
+        handle["metadata"][()] = json.dumps(changed)
+    with pytest.raises(ValueError, match="dataset"):
         export(checkpoint, manifest, tmp_path / "altered-data-release")
     assert not (tmp_path / "altered-data-release").exists()
-    manifest.write_bytes(original)
+    with h5py.File(manifest, "r+") as handle:
+        handle["metadata"][()] = original
     from pretrain.pipeline import exports
 
     sha256 = exports.sha256_file

@@ -11,7 +11,7 @@ import yaml
 
 
 RUN_KEYS = {
-    "manifest",
+    "dataset",
     "output",
     "device",
     "budget",
@@ -20,6 +20,9 @@ RUN_KEYS = {
     "stage",
     "checkpoint",
     "seeds",
+    "purpose",
+    "shared_gpu",
+    "concurrent_gpu_runs",
 }
 TRAINING_KEYS = {
     "model",
@@ -45,6 +48,8 @@ TRAINING_KEYS = {
     "optimizer",
     "scheduler",
     "gradient_clip_norm",
+    "pretraining_scope",
+    "linear_probe",
 }
 
 
@@ -69,14 +74,14 @@ def read_config(path):
             raise ValueError("seeds must be a nonempty list of nonnegative integers")
         if len(set(seeds)) != len(seeds):
             raise ValueError("seeds must not contain duplicates")
-        for name in ("checkpoint", "resume"):
+        for name in ("resume",):
             value = settings.get(name)
             if len(seeds) > 1 and value and "{seed}" not in str(value):
                 raise ValueError(f"Multiple seeds require {{seed}} in the {name} path")
-    for name in ("manifest", "output"):
+    for name in ("dataset", "output"):
         if not isinstance(settings.get(name), str) or not settings[name].strip():
             raise ValueError(f"Training YAML requires {name}")
-    for name in ("manifest", "output", "budget", "resume", "checkpoint"):
+    for name in ("dataset", "output", "budget", "resume", "checkpoint"):
         value = settings.get(name)
         if value is not None:
             if not isinstance(value, str) or not value.strip():
@@ -88,14 +93,32 @@ def read_config(path):
     if device != "cpu" and not settings.get("budget"):
         raise ValueError("CUDA training requires the existing shared budget path")
     stage = settings.setdefault("stage", "pretrain")
-    if stage not in {"pretrain", "finetune", "frozen"}:
-        raise ValueError("stage must be pretrain, finetune or frozen")
+    if stage not in {"pretrain", "finetune", "linear_probe"}:
+        raise ValueError("stage must be pretrain, finetune or linear_probe")
     if stage != "pretrain" and not settings.get("checkpoint"):
-        raise ValueError("finetune and frozen require a pretraining checkpoint")
+        raise ValueError("finetune and linear_probe require a pretraining checkpoint")
     if stage == "pretrain" and settings.get("checkpoint"):
         raise ValueError("Pretraining starts from scratch; use resume for an interrupted run")
-    if stage == "frozen" and settings.get("resume"):
-        raise ValueError("Frozen evaluation starts a fresh classifier fit")
+    if stage == "linear_probe" and settings.get("resume"):
+        raise ValueError("Linear probing starts a fresh classifier fit")
+    if settings.setdefault("purpose", "paper") not in {"paper", "engineering"}:
+        raise ValueError("purpose must be paper or engineering")
+    if type(settings.setdefault("shared_gpu", False)) is not bool:
+        raise ValueError("shared_gpu must be boolean")
+    if settings["shared_gpu"] and device == "cpu":
+        raise ValueError("shared_gpu requires a CUDA device")
+    concurrency = settings.setdefault("concurrent_gpu_runs", 1)
+    if type(concurrency) is not int or concurrency < 1:
+        raise ValueError("concurrent_gpu_runs must be a positive integer")
+    if concurrency > 1 and not settings["shared_gpu"]:
+        raise ValueError("concurrent_gpu_runs greater than one requires shared_gpu")
+    scope = settings.get("pretraining_scope", "subject_holdout")
+    if scope not in {"subject_holdout", "tuab_source"}:
+        raise ValueError("pretraining_scope must be subject_holdout or tuab_source")
+    if scope == "tuab_source":
+        if stage != "pretrain" or "seeds" in settings:
+            raise ValueError("Shared TUAB pretraining uses stage pretrain and one scalar seed")
+        settings.setdefault("wandb", {}).setdefault("domain", "cross_domain")
     from pretrain.tracking import validate_settings
 
     validate_settings(settings.get("wandb", {}))
@@ -109,20 +132,23 @@ def run_config(path):
         return run_seeds(settings)
     device = settings["device"]
     if device != "cpu":
-        from pretrain.gpu import available_gpu
+        from pretrain.gpu import available_gpu, gpu_snapshot
 
         physical_gpu = int(device.split(":")[1])
-        os.environ["CUDA_VISIBLE_DEVICES"] = available_gpu(physical_gpu)
+        os.environ["CUDA_VISIBLE_DEVICES"] = available_gpu(
+            physical_gpu, allow_busy=settings["shared_gpu"]
+        )
+        initial_gpu = gpu_snapshot(physical_gpu)
         os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
         device = "cuda:0"
 
     from pretrain.pipeline.budget import Budget, NoGpuBudget
     from pretrain.pipeline.data import Windows
-    from pretrain.pipeline.splits import validate_prepared_input, split_manifest
+    from pretrain.pipeline.splits import validate_prepared_input, validate_run_dataset, select_split
     from pretrain.pipeline.training import resolve_training_config, run
     from pretrain.tracking import track
 
-    source = Windows(settings["manifest"], "train")
+    source = Windows(settings["dataset"], "train")
     validate_prepared_input(source.metadata)
     stage = settings["stage"]
     defaults = (
@@ -131,6 +157,7 @@ def run_config(path):
             "warmup_epochs": 5,
             "logical_batch": 64,
             "gradient_clip_norm": 1.0,
+            "early_stopping": {"patience": 5, "min_delta": 0.0},
         }
         if stage != "pretrain"
         else {}
@@ -150,9 +177,15 @@ def run_config(path):
             **defaults,
             **supplied,
             "input_samples": source.metadata["window_samples"],
-            "purpose": f"paper_{stage}",
+            "purpose": f"{settings['purpose']}_{stage}",
         }
     )
+    if device != "cpu":
+        config["gpu_policy"] = {
+            "physical_gpu": physical_gpu,
+            "shared": settings["shared_gpu"],
+            "concurrent_runs": settings["concurrent_gpu_runs"],
+        }
     if device == "cpu" and config["precision"] != "fp32":
         raise ValueError("CPU training requires precision: fp32")
     root = Path(settings["output"])
@@ -170,12 +203,18 @@ def run_config(path):
 
         payload = torch.load(settings["checkpoint"], map_location="cpu", weights_only=True)
         pretrained = payload["config"]
-        validate_pretraining_model(payload, config)
+        validate_pretraining_model(payload, config, target_task=source.metadata["task"])
         recipe = copy.deepcopy(pretrained)
         recipe.pop("seed", None)
         if recipe.get("objective"):
             recipe["objective"].pop("seed", None)
         config["pretraining_recipe_id"] = fingerprint(recipe)[:12]
+        receipt = Path(settings["checkpoint"]).parent.parent / "wandb.json"
+        if receipt.exists():
+            import json
+
+            config["source_run_id"] = json.loads(receipt.read_text())["id"]
+        config["source_task"] = payload["contract"]["dataset_identity"]["task"]
     budget = NoGpuBudget()
     if device != "cpu":
         ledger = Path(settings["budget"])
@@ -183,16 +222,22 @@ def run_config(path):
             raise FileNotFoundError(
                 f"Shared budget ledger does not exist: {ledger / 'budget.json'}"
             )
-        budget = Budget(ledger, setup_seconds=300)
+        budget = Budget(ledger, setup_seconds=300, max_concurrent=settings["concurrent_gpu_runs"])
         budget.initialize()
 
     root.mkdir(parents=True, exist_ok=False)
-    manifest = split_manifest(settings["manifest"], root / "split", config["seed"])
-    train = Windows(manifest, "train", verify_signals=False)
+    dataset = select_split(
+        settings["dataset"],
+        root,
+        config["seed"],
+        scope=config.get("pretraining_scope", "subject_holdout"),
+    )
+    train = Windows(dataset, "train", verify_signals=False)
     if settings.get("checkpoint"):
         from pretrain.pipeline.downstream import validate_pretraining_source
 
         validate_pretraining_source(payload, config, train.metadata, mode=stage)
+    validate_run_dataset(config, train.metadata)
     config["logical_batch"] = min(config["logical_batch"], len(train))
     (root / "config.yaml").write_text(
         yaml.safe_dump(
@@ -217,15 +262,25 @@ def run_config(path):
             resume=settings.get("resume"),
         ) as tracker,
     ):
-        kwargs = {"device": device, "budget": budget, "tracker": tracker}
-        if stage == "pretrain":
-            return run(config, manifest, root / "training", resume=settings.get("resume"), **kwargs)
-        from pretrain.pipeline import finetuning, frozen
+        from pretrain.gpu import record_runtime
 
-        if stage == "finetune":
-            kwargs["resume"] = settings.get("resume")
-        module = finetuning if stage == "finetune" else frozen
-        return module.run(config, manifest, settings["checkpoint"], root / "training", **kwargs)
+        monitoring = (
+            record_runtime(root, physical_gpu, initial_gpu, tracker)
+            if device != "cpu"
+            else nullcontext()
+        )
+        with monitoring:
+            kwargs = {"device": device, "budget": budget, "tracker": tracker}
+            if stage == "pretrain":
+                return run(
+                    config, dataset, root / "training", resume=settings.get("resume"), **kwargs
+                )
+            from pretrain.pipeline import finetuning, linear_probe
+
+            if stage == "finetune":
+                kwargs["resume"] = settings.get("resume")
+            module = finetuning if stage == "finetune" else linear_probe
+            return module.run(config, dataset, settings["checkpoint"], root / "training", **kwargs)
 
 
 def run_seeds(settings):

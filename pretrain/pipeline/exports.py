@@ -1,6 +1,5 @@
 """Local encoder release bundles with the exact data and numerical contracts."""
 
-import json
 import shutil
 from pathlib import Path
 
@@ -12,13 +11,24 @@ from pretrain.pipeline.downstream import load_encoder
 from pretrain.metadata import atomic_json, fingerprint
 
 
-def export(checkpoint, manifest, output):
+def export(checkpoint, dataset, output):
     root = Path(output)
     encoder, payload = load_encoder(checkpoint)
-    metadata = json.loads(Path(manifest).read_text())
+    from pretrain.pipeline.dataset import DatasetReference, read_metadata
+
+    try:
+        metadata = read_metadata(
+            DatasetReference(
+                Path(dataset),
+                payload["config"]["seed"],
+                payload["config"].get("pretraining_scope", "subject_holdout"),
+            )
+        )
+    except ValueError as error:
+        raise ValueError("Release dataset differs from selected checkpoint") from error
     actual = fingerprint({k: v for k, v in metadata.items() if k != "fingerprint"})
     if metadata["fingerprint"] != actual or actual != payload["contract"]["dataset"]:
-        raise ValueError("Release manifest differs from selected checkpoint")
+        raise ValueError("Release dataset differs from selected checkpoint")
     repository = Path(__file__).resolve().parents[2]
     if sha256_file(repository / "uv.lock") != payload["contract"]["uv_lock"]:
         raise ValueError("Release environment lock differs from selected checkpoint")

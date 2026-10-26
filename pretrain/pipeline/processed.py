@@ -46,61 +46,64 @@ def prepare(contract_path, output):
         label_evidence=settings["label_evidence"],
         preprocessing=actual,
     )
-    for partition in settings["partitions"]:
-        x = fields[partition["signals"]].read(artifact)
-        y = fields[partition["labels"]].read(artifact)
-        subjects = fields[partition["subjects"]].read(artifact)
-        if (
-            x.ndim != 3
-            or y.ndim != 1
-            or subjects.ndim != 1
-            or not len(x) == len(y) == len(subjects)
-        ):
-            raise ValueError("Release signals, labels and participant IDs are not aligned")
-        for row in range(len(x)):
-            signal = x[row] if settings["layout"] == "NCT" else x[row].T
-            if signal.shape != (len(settings["channels"]), samples):
-                raise ValueError("Release window or physical channel order is incompatible")
-            if int(y[row]) != y[row] or int(y[row]) not in label_map:
-                raise ValueError("Release label is outside the verified mapping")
-            subject = subjects[row].item()
-            if subject is None or str(subject).strip() in {"", "nan", "None"}:
-                raise ValueError("Release participant identity is missing")
-            writer.add(
-                signal,
-                subject=str(subject),
-                recording=f"{partition['signals']}:{row}",
-                source={
-                    "path": str(artifact),
-                    "sha256": digest,
-                    "release_field": partition["signals"],
-                    "release_row": row,
-                    "contract_sha256": sha256_file(path),
+    try:
+        for partition in settings["partitions"]:
+            x = fields[partition["signals"]].read(artifact)
+            y = fields[partition["labels"]].read(artifact)
+            subjects = fields[partition["subjects"]].read(artifact)
+            if (
+                x.ndim != 3
+                or y.ndim != 1
+                or subjects.ndim != 1
+                or not len(x) == len(y) == len(subjects)
+            ):
+                raise ValueError("Release signals, labels and participant IDs are not aligned")
+            for row in range(len(x)):
+                signal = x[row] if settings["layout"] == "NCT" else x[row].T
+                if signal.shape != (len(settings["channels"]), samples):
+                    raise ValueError("Release window or physical channel order is incompatible")
+                if int(y[row]) != y[row] or int(y[row]) not in label_map:
+                    raise ValueError("Release label is outside the verified mapping")
+                subject = subjects[row].item()
+                if subject is None or str(subject).strip() in {"", "nan", "None"}:
+                    raise ValueError("Release participant identity is missing")
+                writer.add(
+                    signal,
+                    subject=str(subject),
+                    recording=f"{partition['signals']}/row-{row}",
+                    source={
+                        "path": str(artifact),
+                        "sha256": digest,
+                        "release_field": partition["signals"],
+                        "release_row": row,
+                        "contract_sha256": sha256_file(path),
+                    },
+                    label=label_map[int(y[row])],
+                )
+
+        def finalize(metadata):
+            metadata["subject_evidence"] = settings["subject_evidence"]
+            metadata["preprocessing_evidence"] = settings.get(
+                "preprocessing_evidence",
+                {
+                    "status": "not_verified",
+                    "scope": "user-selected processed release; values preserved",
                 },
-                label=label_map[int(y[row])],
             )
+            metadata["release_contract_sha256"] = sha256_file(path)
+            metadata["release_counts"] = {
+                "input_windows": len(writer.events),
+                "retained_windows": sum(metadata["counts"].values()),
+                "excluded_entries": len(metadata["excluded"]),
+            }
+            if settings.get("source_evidence"):
+                evidence = (path.parent / settings["source_evidence"]).resolve()
+                return attach_source_evidence(metadata, evidence)
+            return metadata
 
-    def finalize(metadata):
-        metadata["subject_evidence"] = settings["subject_evidence"]
-        metadata["preprocessing_evidence"] = settings.get(
-            "preprocessing_evidence",
-            {
-                "status": "not_verified",
-                "scope": "user-selected processed release; values preserved",
-            },
-        )
-        metadata["release_contract_sha256"] = sha256_file(path)
-        metadata["release_counts"] = {
-            "input_windows": len(writer.events),
-            "retained_windows": sum(metadata["counts"].values()),
-            "excluded_entries": len(metadata["excluded"]),
-        }
-        if settings.get("source_evidence"):
-            evidence = (path.parent / settings["source_evidence"]).resolve()
-            return attach_source_evidence(metadata, evidence)
-        return metadata
-
-    return writer.finish(finalize=finalize)
+        return writer.finish(finalize=finalize)
+    finally:
+        writer.close()
 
 
 def main():

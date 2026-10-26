@@ -24,6 +24,7 @@ from pretrain.pipeline.checkpoint import (
 from pretrain.pipeline.data import Windows, batches, chunks, evaluation_batches, to_device
 from pretrain.pipeline.downstream import classifier, optimizer_groups, validate_pretraining_source
 from pretrain.pipeline.metrics import LossTotals, classification
+from pretrain.pipeline.selection import selection_metadata
 from pretrain.models.factory import attention_backends
 from pretrain.metadata import atomic_json
 
@@ -57,7 +58,7 @@ def learning_rate(progress, epochs, warmup=5, *, peak_lr=PEAK_LR, minimum_lr=MIN
 
 
 def run(
-    config, manifest, checkpoint, output, *, device="cpu", budget=None, resume=None, tracker=None
+    config, dataset, checkpoint, output, *, device="cpu", budget=None, resume=None, tracker=None
 ):
     for key in ("epochs", "logical_batch", "microbatch"):
         if type(config.get(key)) is not int or config[key] < 1:
@@ -70,7 +71,7 @@ def run(
     device = torch.device(device)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
-    train, validation = Windows(manifest, "train"), Windows(manifest, "validation")
+    train, validation = Windows(dataset, "train"), Windows(dataset, "validation")
     from pretrain.pipeline.splits import validate_run_dataset
 
     validate_run_dataset(config, train.metadata)
@@ -84,11 +85,16 @@ def run(
     }
     minimum_lr = config.get("scheduler", {}).get("minimum_lr", MINIMUM_LR)
     clip_norm = config.get("gradient_clip_norm", GRADIENT_CLIP_NORM)
+    stopping = config.get("early_stopping", {"patience": 5, "min_delta": 0.0})
+    if stopping["patience"] < 1 or stopping["min_delta"] < 0:
+        raise ValueError("Early stopping requires positive patience and nonnegative min_delta")
     config["pretraining_checkpoint_sha256"] = sha256_file(checkpoint)
     provenance = contract(config, train.metadata, device=device)
     model, pretrained = classifier(checkpoint, len(train.metadata["classes"]), config["seed"])
     validate_pretraining_source(pretrained, config, train.metadata, mode="finetune")
     model.to(device)
+    if tracker:
+        tracker.parameters(model)
     groups, audit = optimizer_groups(model)
     for group, record in zip(groups, audit):
         group["lr"] = settings["lr"] * group["lr_scale"]
@@ -100,10 +106,13 @@ def run(
     state = {
         "epoch": 0,
         "cursor": 0,
+        "global_step": 0,
         "best_accuracy": None,
         "history": [],
         "epoch_loss": 0.0,
         "epoch_samples": 0,
+        "bad_epochs": 0,
+        "stopping_best": None,
     }
     atomic_json(
         output / "run.json",
@@ -121,6 +130,7 @@ def run(
                     "epochs": config["epochs"],
                 },
                 "gradient_clip_norm": clip_norm,
+                "selection": selection_metadata("finetune"),
                 "classifier": {
                     "normalization": type(model.head[0]).__name__,
                     "dropout": model.head[1].p,
@@ -143,6 +153,8 @@ def run(
         atomic_json(output / "compute.json", effective_compute)
         try:
             for epoch in range(state["epoch"], config["epochs"]):
+                if state["bad_epochs"] >= stopping["patience"]:
+                    break
                 loader = batches(
                     train,
                     batch_size=config["logical_batch"],
@@ -184,20 +196,39 @@ def run(
                         model.parameters(), clip_norm, error_if_nonfinite=True
                     )
                     optimizer.step()
+                    state["global_step"] += 1
+                    if tracker:
+                        rates = [group["lr"] for group in optimizer.param_groups]
+                        tracker.log(
+                            {
+                                "epoch": epoch + (index + 1) / len(loader),
+                                "trainer/global_step": state["global_step"],
+                                "train/loss_step": total_loss / total,
+                                "train/lr": rate,
+                                "train/lr_min": min(rates),
+                                "train/lr_max": max(rates),
+                            }
+                        )
                     state["cursor"] = index + 1
                     state["epoch_loss"] += total_loss
                     state["epoch_samples"] += total
                 save(output / "last.pth", snapshot(model, optimizer, state, provenance))
                 labels, probabilities, _ = predictions(model, validation, config, device, budget)
                 scores = classification(labels, probabilities)
+                print(
+                    f"epoch={epoch + 1} train_loss={state['epoch_loss'] / state['epoch_samples']:.6f} "
+                    f"val_loss={scores['loss']:.6f} val_bal_acc={scores['balanced_accuracy']:.6f}",
+                    flush=True,
+                )
                 if tracker:
                     tracker.log(
                         {
                             "epoch": epoch + 1,
-                            "train/loss": state["epoch_loss"] / state["epoch_samples"],
+                            "train/loss_epoch": state["epoch_loss"] / state["epoch_samples"],
                             **{f"val/{key}": value for key, value in scores.items()},
                         }
                     )
+                    tracker.confusion(labels, probabilities, prefix="val", epoch=epoch + 1)
                 state["history"].append(
                     {
                         "epoch": epoch + 1,
@@ -219,10 +250,20 @@ def run(
                             "validation": scores,
                         },
                     )
+                if (
+                    state["stopping_best"] is None
+                    or scores["balanced_accuracy"] > state["stopping_best"] + stopping["min_delta"]
+                ):
+                    state["stopping_best"] = scores["balanced_accuracy"]
+                    state["bad_epochs"] = 0
+                else:
+                    state["bad_epochs"] += 1
                 state.update(epoch=epoch + 1, cursor=0, epoch_loss=0.0, epoch_samples=0)
                 save(output / "last.pth", snapshot(model, optimizer, state, provenance))
                 write_history(output / "history.jsonl", state["history"])
                 budget.flush()
+                if state["bad_epochs"] >= stopping["patience"]:
+                    break
         except BudgetStop:
             save(output / "last.pth", snapshot(model, optimizer, state, provenance))
             atomic_json(output / "result.json", {"status": "budget_stopped", "state": state})
@@ -234,6 +275,7 @@ def run(
             model.load_state_dict(best["model"])
             selection = {
                 "status": "locked_before_test",
+                "criterion": selection_metadata("finetune"),
                 "checkpoint_sha256": sha256_file(output / "best.pth"),
                 "epoch": best["epoch"],
                 "validation": best["validation"],
@@ -241,16 +283,33 @@ def run(
                 "pretraining_contract": pretrained["contract"],
             }
             atomic_json(output / "selection.json", selection)
-            test = Windows(manifest, "test")
+            if tracker:
+                tracker.summary(
+                    {
+                        "completed_epochs": state["epoch"],
+                        "stop_reason": "early_stopping"
+                        if state["bad_epochs"] >= stopping["patience"]
+                        else "maximum_epochs",
+                    }
+                )
+                tracker.summary(
+                    {
+                        "selected/epoch": best["epoch"],
+                        "best_epoch": best["epoch"],
+                        **{
+                            f"selected/val/{key}": value
+                            for key, value in best["validation"].items()
+                        },
+                    }
+                )
+                tracker.checkpoint(
+                    output / "best.pth",
+                    metadata={"selected/epoch": best["epoch"], "validation": best["validation"]},
+                )
+            test = Windows(dataset, "test")
             labels, probabilities, identities = predictions(model, test, config, device, budget)
             scores = classification(labels, probabilities)
             if tracker:
-                tracker.log(
-                    {
-                        "epoch": state["epoch"],
-                        **{f"test/{key}": value for key, value in scores.items()},
-                    }
-                )
                 tracker.summary(
                     {
                         "selected/epoch": best["epoch"],

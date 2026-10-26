@@ -1,11 +1,13 @@
-"""Persistent single-GPU budget with exclusive ownership and conservative recovery."""
+"""Persistent GPU wall-time budget shared by bounded concurrent runs on one device."""
 
 import contextlib
 import fcntl
 import json
 import math
+import os
 import signal
 import time
+import uuid
 from pathlib import Path
 
 from pretrain.metadata import atomic_json
@@ -16,7 +18,7 @@ class BudgetStop(RuntimeError):
 
 
 class Budget:
-    def __init__(self, root, *, gpu_hours=72, setup_seconds=0):
+    def __init__(self, root, *, gpu_hours=72, setup_seconds=0, max_concurrent=1, device=None):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "budget.json"
@@ -26,14 +28,52 @@ class Budget:
         self.setup_seconds = float(setup_seconds)
         if not math.isfinite(self.setup_seconds) or self.setup_seconds < 0:
             raise ValueError("Setup allowance must be finite and nonnegative")
+        if type(max_concurrent) is not int or max_concurrent < 1:
+            raise ValueError("max_concurrent must be a positive integer")
+        self.max_concurrent = max_concurrent
+        self.device = device or os.environ.get("CUDA_VISIBLE_DEVICES", "unspecified")
+        self.boot_id = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        self.token = uuid.uuid4().hex
         self.started = None
         self.stop_requested = False
 
     @contextlib.contextmanager
     def _locked(self):
         with (self.root / "budget.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            # Lock only ledger transactions. Training processes keep separate leases.
+            fcntl.flock(lock, fcntl.LOCK_EX)
             yield
+
+    @staticmethod
+    def _process(pid):
+        try:
+            fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+            return None if fields[0] == "Z" else fields[19]
+        except FileNotFoundError:
+            return None
+
+    def _settle(self, state):
+        """Charge an occupied GPU once, including conservative crash recovery."""
+        now, monotonic = time.time(), time.perf_counter()
+        if state["active"]:
+            delta = (
+                monotonic - state["updated_monotonic"]
+                if state.get("boot_id") == self.boot_id and "updated_monotonic" in state
+                else now - state["updated_utc"]
+            )
+            state["used_seconds"] += max(0, delta)
+        state["leases"] = {
+            token: lease
+            for token, lease in state.get("leases", {}).items()
+            if lease["boot_id"] == self.boot_id
+            and self._process(lease["pid"]) == lease["process_start"]
+        }
+        state.update(
+            active=bool(state["leases"]),
+            updated_utc=now,
+            updated_monotonic=monotonic,
+            boot_id=self.boot_id,
+        )
 
     def _read(self):
         state = (
@@ -77,20 +117,37 @@ class Budget:
 
     @contextlib.contextmanager
     def lease(self):
+        if self.started is not None:
+            raise RuntimeError("Budget already has an active lease")
         with self._locked():
-            self.state = state = self._read()
-            if state["active"]:
-                # A vanished writer may have reserved the device since its last receipt.
-                state["used_seconds"] += max(0, time.time() - state["updated_utc"])
+            state = self._read()
+            self._settle(state)
+            # Preserve recovered usage even if this admission is rejected.
+            atomic_json(self.path, state)
+            leases = state["leases"]
+            if leases and (
+                state["device"] != self.device or state["max_concurrent"] != self.max_concurrent
+            ):
+                raise ValueError("Concurrent runs must share one GPU and one concurrency limit")
+            if len(leases) >= self.max_concurrent:
+                raise BlockingIOError("The shared GPU concurrency limit is occupied")
             self.used = state["used_seconds"]
             if self.used >= self.limit:
                 raise BudgetStop("The shared GPU-hour budget is exhausted")
             self.started = time.perf_counter()
-            self.flush(active=True)
+            leases[self.token] = {
+                "pid": os.getpid(),
+                "process_start": self._process(os.getpid()),
+                "boot_id": self.boot_id,
+            }
+            state.update(active=True, device=self.device, max_concurrent=self.max_concurrent)
+            atomic_json(self.path, state)
+        try:
+            yield self
+        finally:
             try:
-                yield self
-            finally:
                 self.flush(active=False)
+            finally:
                 self.used = self.elapsed
                 self.started = None
 
@@ -105,16 +162,17 @@ class Budget:
             raise BudgetStop("Stop requested or shared GPU-hour budget reached")
 
     def flush(self, *, active=True):
-        atomic_json(
-            self.path,
-            {
-                **self.state,
-                "used_seconds": self.elapsed,
-                "limit_seconds": self.limit,
-                "active": active,
-                "updated_utc": time.time(),
-            },
-        )
+        if self.started is None:
+            raise RuntimeError("GPU work requires an active budget lease")
+        with self._locked():
+            state = self._read()
+            self._settle(state)
+            if self.token not in state["leases"]:
+                raise RuntimeError("Active GPU lease disappeared")
+            if not active:
+                del state["leases"][self.token]
+            state["active"] = bool(state["leases"])
+            atomic_json(self.path, state)
 
 
 class NoGpuBudget:

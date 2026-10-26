@@ -1,22 +1,22 @@
-"""One versioned raw-to-model signal contract for the paper task matrix."""
+"""EEG-X2 QuantPlus signal preparation shared by the native dataset adapters."""
 
 from importlib.metadata import version
 
 import mne
 import numpy as np
+from sklearn.preprocessing import StandardScaler
 
 from pretrain.channel_identity import load_channel_vocabulary
 
 
 def profile():
     return {
-        "name": "paper_eegx_tuh_v1",
+        "name": "eegx2_quantplus_v1",
         "mne": version("mne"),
+        "scikit_learn": version("scikit-learn"),
         "sample_rate": 128,
-        "reference": "average",
-        "notch": 60.0,
-        "notch_width": 1.0,
-        "notch_transition": 1.0,
+        "reference": "native",
+        "notch": None,
         "bandpass": [0.5, 45.0],
         "filter_method": "fir",
         "filter_design": "firwin",
@@ -28,9 +28,10 @@ def profile():
         "resample_method": "fft",
         "resample_npad": "auto",
         "resample_window": "auto",
-        "normalization": "recording_channel_zscore",
+        "normalization": "recording_channel_standard_scaler",
+        "scaler_with_mean": True,
+        "scaler_with_std": True,
         "ddof": 0,
-        "std_floor_volts": 1e-12,
         "clip": 15.0,
         "output_dtype": "float32",
         "ica": False,
@@ -50,52 +51,46 @@ def processed_profile():
 
 
 def preprocess(volts, sample_rate, channels):
-    """Filter a complete recording, then standardize; input units are volts."""
+    """Preserve native reference, filter and standardize a recording given in volts."""
+    settings = profile()
+    highpass, lowpass = settings["bandpass"]
     signal = np.asarray(volts, dtype=np.float64)
     if signal.ndim != 2 or signal.shape[0] != len(channels) or signal.shape[1] < 2:
         raise ValueError("Expected recording [physical channels, time]")
-    if not np.isfinite(signal).all() or sample_rate / 2 <= 45:
+    if not np.isfinite(signal).all() or sample_rate / 2 <= lowpass:
         raise ValueError("Invalid signal values or acquisition sampling rate")
     ids = load_channel_vocabulary().resolve_names(channels)
     if len(set(ids.tolist())) != len(channels):
         raise ValueError("Physical electrode identities must be unique")
-    settings = profile()
     raw = mne.io.RawArray(
         signal.copy(), mne.create_info(channels, sample_rate, "eeg"), verbose=False
     )
-    raw.set_eeg_reference("average", projection=False, verbose=False)
-    if sample_rate / 2 > settings["notch"]:
-        raw.notch_filter(
-            [60.0],
-            notch_widths=1.0,
-            trans_bandwidth=1.0,
-            method="fir",
-            fir_design="firwin",
-            fir_window="hamming",
-            phase="zero",
-            filter_length="auto",
-            pad="reflect_limited",
-            n_jobs=1,
-            verbose=False,
-        )
     raw.filter(
-        0.5,
-        45.0,
-        method="fir",
-        fir_design="firwin",
-        fir_window="hamming",
-        phase="zero",
-        filter_length="auto",
-        l_trans_bandwidth="auto",
-        h_trans_bandwidth="auto",
-        pad="reflect_limited",
+        highpass,
+        lowpass,
+        method=settings["filter_method"],
+        fir_design=settings["filter_design"],
+        fir_window=settings["filter_window"],
+        phase=settings["filter_phase"],
+        filter_length=settings["filter_length"],
+        l_trans_bandwidth=settings["filter_transition"],
+        h_trans_bandwidth=settings["filter_transition"],
+        pad=settings["padding"],
         n_jobs=1,
         verbose=False,
     )
-    if sample_rate != 128:
-        raw.resample(128, method="fft", npad="auto", window="auto", n_jobs=1, verbose=False)
-    values = raw.get_data()
-    mean = values.mean(axis=-1, keepdims=True, dtype=np.float64)
-    std = values.std(axis=-1, keepdims=True, dtype=np.float64, ddof=0)
-    output = (values - mean) / np.maximum(std, settings["std_floor_volts"])
-    return np.clip(output, -15, 15).astype(np.float32)
+    if sample_rate != settings["sample_rate"]:
+        raw.resample(
+            settings["sample_rate"],
+            method=settings["resample_method"],
+            npad=settings["resample_npad"],
+            window=settings["resample_window"],
+            n_jobs=1,
+            verbose=False,
+        )
+    output = (
+        StandardScaler(with_mean=settings["scaler_with_mean"], with_std=settings["scaler_with_std"])
+        .fit_transform(raw.get_data().T)
+        .T
+    )
+    return np.clip(output, -settings["clip"], settings["clip"]).astype(settings["output_dtype"])

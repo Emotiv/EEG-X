@@ -1,4 +1,5 @@
 import json
+import h5py
 
 import numpy as np
 import pytest
@@ -48,22 +49,17 @@ def release_contract(tmp_path):
 
 def test_processed_release_keeps_values_and_freezes_source_evidence(tmp_path):
     path, values, evidence, contract = release_contract(tmp_path)
-    prepared = tmp_path / "prepared"
+    prepared = tmp_path / "prepared.h5"
     metadata = prepare(path, prepared)
-    np.testing.assert_array_equal(np.load(prepared / "record-000000.npy"), values[0])
+    with h5py.File(prepared, "r") as handle:
+        np.testing.assert_array_equal(handle["X"][0], values[0])
     assert metadata["non_rasr_evidence"]["sha256"] == sha256_file(evidence)
     assert metadata["release_counts"]["retained_windows"] == 40
-    assert (
-        sum(
-            len(Windows(prepared / "manifest.json", role))
-            for role in ("train", "validation", "test")
-        )
-        == 40
-    )
+    assert sum(len(Windows(prepared, role)) for role in ("train", "validation", "test")) == 40
     contract["preprocessing"]["clip"] = 999
     path.write_text(json.dumps(contract))
     with pytest.raises(ValueError, match="preprocessing is incompatible"):
-        prepare(path, tmp_path / "invalid")
+        prepare(path, tmp_path / "invalid.h5")
 
 
 def test_preparation_publishes_only_the_complete_manifest(tmp_path, monkeypatch):
@@ -71,18 +67,18 @@ def test_preparation_publishes_only_the_complete_manifest(tmp_path, monkeypatch)
     from pretrain.pipeline.splits import validate_prepared_input
 
     path, _, _, _ = release_contract(tmp_path)
-    prepared = tmp_path / "prepared"
+    prepared = tmp_path / "prepared.h5"
     attach = processed.attach_source_evidence
     observed = []
 
     def observe_during_preparation(metadata, evidence):
-        observed.append((prepared / "manifest.json").exists())
+        observed.append((prepared).exists())
         return attach(metadata, evidence)
 
     monkeypatch.setattr(processed, "attach_source_evidence", observe_during_preparation)
     prepare(path, prepared)
     assert observed == [False]
-    validate_prepared_input(Windows(prepared / "manifest.json", "train").metadata)
+    validate_prepared_input(Windows(prepared, "train").metadata)
 
 
 def test_processed_release_can_preserve_values_without_upstream_history(tmp_path):
@@ -99,10 +95,9 @@ def test_processed_release_can_preserve_values_without_upstream_history(tmp_path
     contract.pop("source_evidence")
     contract.pop("preprocessing_evidence")
     path.write_text(json.dumps(contract))
-    output = tmp_path / "as-provided"
+    output = tmp_path / "as-provided.h5"
     metadata = prepare(path, output)
-    np.testing.assert_array_equal(
-        np.load(output / "record-000000.npy"), values[0].astype("float32")
-    )
+    with h5py.File(output, "r") as handle:
+        np.testing.assert_array_equal(handle["X"][0], values[0].astype("float32"))
     assert metadata["preprocessing"]["upstream_history"] == "not_verified"
     assert "non_rasr_evidence" not in metadata

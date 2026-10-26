@@ -74,7 +74,7 @@ def event_windows(times, conditions, rate):
     for begin, end, label in conditions:
         first, last = np.searchsorted(times, [begin, end], side="left")
         start, stop = int(np.ceil(first * 128 / rate)), int(np.ceil(last * 128 / rate))
-        output.extend((offset, label) for offset in range(start, stop - 256 + 1, 256))
+        output.extend((offset, label) for offset in range(start, stop - 256 + 1, 32))
     return output
 
 
@@ -119,7 +119,7 @@ class Crowdsourced:
             "sampling_authority": "nominal rate checked against native timestamps and counter cycle",
             "gaps": "split acquisition at timestamp or counter gaps; never insert samples or join blocks",
             "device_interpolation": "retain and count interpolation already present in the author raw export",
-            "window_rule": "source marker intervals mapped through native sample indices to non-overlapping 128Hz windows",
+            "window_rule": "source marker intervals mapped through native sample indices to 128Hz windows with 32-sample stride",
             "normalization_unit": "complete uninterrupted acquisition block before windowing",
             "record_audit": [],
         }
