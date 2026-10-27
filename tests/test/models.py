@@ -5,6 +5,39 @@ from pretrain.objectives import DEFAULT_HYDRA
 from pretrain.models.factory import Classifier, assert_all_rms, create_model, masks
 
 
+def test_rms_backend_routes_all_model_norms_and_binds_checkpoint():
+    from pretrain.models.attention import MultiHeadAttention
+    from pretrain.normalization import RMSNorm
+
+    config = {"depth": 2, "width": 32, "input_samples": 256, "objective": None}
+    torch.manual_seed(241)
+    legacy = create_model(config).eval()
+    torch.manual_seed(241)
+    selected = create_model({**config, "normalization_backend": "triton"}).eval()
+    assert "normalization_backend" not in legacy.contract
+    assert selected.contract["normalization_backend"] == "triton"
+    assert all(module.backend == "triton" for module in selected.modules() if isinstance(module, RMSNorm))
+    assert all(module.normalization_backend == "triton" for module in selected.modules()
+               if isinstance(module, MultiHeadAttention) and module.qk_normalization == "rmsnorm")
+    assert Classifier(selected.encoder, 2).head[0].backend == "triton"
+    eeg, ids = torch.randn(1, 2, 256), torch.tensor([0, 1])
+    mask = masks(["window"], ids, samples=256, seed=241)
+    with torch.no_grad():
+        torch.testing.assert_close(legacy(eeg, ids, mask=mask)["pred"],
+                                   selected(eeg, ids, mask=mask)["pred"], rtol=0, atol=0)
+    with pytest.raises(ValueError, match="checkpoint contract"):
+        legacy.load_state_dict(selected.state_dict())
+    with pytest.raises(ValueError, match="normalization_backend"):
+        create_model({**config, "normalization_backend": []})
+    selected.encoder.set_normalization_backend("torch")
+    assert all(module.backend == "torch" for module in selected.encoder.modules() if isinstance(module, RMSNorm))
+    assert all(module.normalization_backend == "torch" for module in selected.encoder.modules()
+               if isinstance(module, MultiHeadAttention) and module.qk_normalization == "rmsnorm")
+    with pytest.raises(ValueError, match="normalization_backend"):
+        selected.encoder.set_normalization_backend("invalid")
+    assert selected.encoder.normalization_backend == "torch"
+
+
 @pytest.mark.parametrize("normalization", ["none", "rmsnorm"])
 def test_attention_backend_preserves_the_selected_equation(normalization):
     import copy

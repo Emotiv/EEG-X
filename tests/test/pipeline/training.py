@@ -3,6 +3,7 @@ import json
 import pytest
 import torch
 
+from pretrain.compute import DEFAULT_COMPUTE
 from pretrain.pipeline.budget import BudgetStop, NoGpuBudget
 from pretrain.pipeline.downstream import classifier, optimizer_groups
 from pretrain.pipeline.training import run
@@ -36,9 +37,12 @@ class StopAfterUpdate(NoGpuBudget):
             raise BudgetStop("test stop after the first full update")
 
 
-def test_real_training_resume_preserves_the_logical_update(tmp_path):
+@pytest.mark.parametrize("normalization_backend", [None, "triton"])
+def test_real_training_resume_preserves_the_logical_update(tmp_path, normalization_backend):
     manifest = prepared_fixture(tmp_path / "data")
     config = configuration()
+    if normalization_backend is not None:
+        config["normalization_backend"] = normalization_backend
     run(config, manifest, tmp_path / "whole")
     with pytest.raises(BudgetStop):
         run(config, manifest, tmp_path / "partial", budget=StopAfterUpdate())
@@ -56,6 +60,33 @@ def test_real_training_resume_preserves_the_logical_update(tmp_path):
     assert optimizer["defaults"]["lr"] == 2.4e-4
     assert optimizer["defaults"]["eps"] == 1e-9
     assert receipt["resolved"]["model"] == left["model"]["_extra_state"]
+
+
+def test_allocation_fill_option_preserves_training_and_binds_resume(tmp_path):
+    manifest = prepared_fixture(tmp_path / "data")
+    normal = configuration()
+    fast = {**normal, "compute": {**DEFAULT_COMPUTE, "fill_uninitialized_memory": False}}
+    normal_checkpoint = run(normal, manifest, tmp_path / "normal")
+    fast_checkpoint = run(fast, manifest, tmp_path / "fast")
+    left = torch.load(normal_checkpoint.parent / "last.pth", weights_only=True)
+    right = torch.load(fast_checkpoint.parent / "last.pth", weights_only=True)
+    assert left["state"] == right["state"]
+    for name, value in left["model"].items():
+        if torch.is_tensor(value):
+            torch.testing.assert_close(value, right["model"][name], rtol=0, atol=0)
+    torch.testing.assert_close(left["optimizer"], right["optimizer"], rtol=0, atol=0)
+    assert right["contract"]["execution"]["effective_compute"]["fill_uninitialized_memory"] is False
+    with pytest.raises(BudgetStop):
+        run(fast, manifest, tmp_path / "fast-partial", budget=StopAfterUpdate())
+    run(fast, manifest, tmp_path / "fast-resumed", resume=tmp_path / "fast-partial" / "last.pth")
+    resumed = torch.load(tmp_path / "fast-resumed" / "last.pth", weights_only=True)
+    assert right["state"] == resumed["state"]
+    for name, value in right["model"].items():
+        if torch.is_tensor(value):
+            torch.testing.assert_close(value, resumed["model"][name], rtol=0, atol=0)
+    torch.testing.assert_close(right["optimizer"], resumed["optimizer"], rtol=0, atol=0)
+    with pytest.raises(ValueError, match="Resume rejected"):
+        run(fast, manifest, tmp_path / "wrong-policy", resume=normal_checkpoint.parent / "last.pth")
 
 
 def test_optimizer_groups_cover_rms_encoder_and_head(tmp_path):

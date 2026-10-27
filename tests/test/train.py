@@ -17,6 +17,26 @@ from tests.test.pipeline.data import prepared_fixture
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_all_paper_configs_use_the_selected_gpu_recipe():
+    from pretrain.compute import compute_policy
+
+    paths = sorted((ROOT / "configs").glob("*.yaml"))
+    stages = {"pretrain": 0, "finetune": 0, "linear_probe": 0}
+    for path in paths:
+        settings = read_config(path)
+        assert settings["purpose"] == "paper"
+        stages[settings["stage"]] += 1
+        assert settings["normalization_backend"] == "triton"
+        assert compute_policy(settings)["fill_uninitialized_memory"] is False
+        assert settings.get("deterministic", True) is True
+        if settings["stage"] == "pretrain":
+            assert settings["dictionary_backend"] == "triton"
+            assert (settings["microbatch"], settings["logical_batch"]) == (512, 4096)
+        else:
+            assert (settings["microbatch"], settings["logical_batch"]) == (16, 64)
+    assert stages == {"pretrain": 5, "finetune": 8, "linear_probe": 4}
+
+
 def invoke(config, cwd):
     return subprocess.run(
         [sys.executable, "-m", "pretrain", "train", "--config", str(config)],
@@ -27,7 +47,8 @@ def invoke(config, cwd):
     )
 
 
-def test_yaml_command_trains_and_resumes_one_model_without_a_study(tmp_path):
+@pytest.mark.parametrize("normalization_backend", [None, "triton"])
+def test_yaml_command_trains_and_resumes_one_model_without_a_study(tmp_path, normalization_backend):
     prepared_fixture(tmp_path / "data")
     path = tmp_path / "train.yaml"
     settings = {
@@ -48,6 +69,8 @@ def test_yaml_command_trains_and_resumes_one_model_without_a_study(tmp_path):
         "scheduler": {"minimum_lr": 0.0002},
         "gradient_clip_norm": 2.0,
     }
+    if normalization_backend is not None:
+        settings["normalization_backend"] = normalization_backend
     path.write_text(yaml.safe_dump(settings))
     completed = invoke(path, ROOT)
     assert completed.returncode == 0, completed.stdout + completed.stderr
@@ -65,6 +88,9 @@ def test_yaml_command_trains_and_resumes_one_model_without_a_study(tmp_path):
     assert payload["contract"]["config"]["logical_batch"] == 28
     assert payload["optimizer"]["param_groups"][0]["lr"] == pytest.approx(0.0002)
     assert payload["contract"]["config"]["size"] == "d8w64"
+    if normalization_backend is not None:
+        assert payload["contract"]["config"]["normalization_backend"] == normalization_backend
+        assert payload["model"]["_extra_state"]["normalization_backend"] == normalization_backend
 
     # Launch from another directory to ensure YAML-relative paths stay stable.
     resumed = yaml.safe_load((output / "config.yaml").read_text())

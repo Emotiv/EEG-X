@@ -29,9 +29,10 @@ class ValidationSelection:
             raise ValueError("Early stopping requires positive patience and nonnegative min_delta")
 
     def observe(self, model, state, provenance, epoch):
-        from pretrain.pipeline.training import validation_loss
+        from pretrain.pipeline.validation import measure
 
-        value = validation_loss(model, self.validation, self.config, self.device, self.budget)
+        metrics = measure(model, self.validation, self.config, self.device, self.budget)
+        value = metrics["raw_mse"]
         if epoch % 10 == 0:
             from pretrain.pipeline.examples import save as save_examples
 
@@ -44,7 +45,8 @@ class ValidationSelection:
                 self.output / f"validation-examples-{epoch:04d}.npz",
             )
         if self.tracker:
-            self.tracker.log({"epoch": epoch, "val/raw_mse": value})
+            self.tracker.log({"epoch": epoch, **{f"val/{key}": value
+                                                  for key, value in metrics.items()}})
         if state["best_loss"] is None or value < state["best_loss"]:
             state["best_loss"] = value
             state["best_epoch"] = epoch
@@ -60,7 +62,8 @@ class ValidationSelection:
             state["bad_epochs"] = 0
         elif epoch > self.warmup:
             state["bad_epochs"] += 1
-        return {"validation_mse": value}
+        return {"validation_mse": value,
+                **{f"validation_{key}": loss for key, loss in metrics.items() if key != "raw_mse"}}
 
     def should_stop(self, state):
         return state["bad_epochs"] >= self.stopping["patience"]

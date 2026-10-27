@@ -13,9 +13,41 @@ DEFAULT_HYDRA = {
     "seed": 245,
 }
 
+DEFAULT_HYDRA_TARGET = {
+    "name": "raw_hydra_patch_target_v1",
+    "weight": 1.0,
+    "patch_size": 64,
+    "kernel_size": 15,
+    "groups": 4,
+    "k": 4,
+    "seed": 245,
+}
+
+
+def _validate_target(objective):
+    if set(objective) != set(DEFAULT_HYDRA_TARGET):
+        raise ValueError("HYDRA targets require explicit patch/filter geometry, weight and seed")
+    weight = objective["weight"]
+    if (isinstance(weight, bool) or not isinstance(weight, (int, float))
+            or not math.isfinite(weight) or weight <= 0):
+        raise ValueError("Positive finite objective.weight required")
+    for key in ("patch_size", "kernel_size", "groups", "k", "seed"):
+        if type(objective[key]) is not int or objective[key] < (0 if key == "seed" else 1):
+            raise ValueError(f"Invalid objective.{key}")
+    if objective["patch_size"] % 32:
+        raise ValueError("HYDRA target patches must contain complete model patches")
+    if (objective["kernel_size"] < 3 or objective["kernel_size"] % 2 == 0
+            or objective["kernel_size"] > objective["patch_size"]):
+        raise ValueError("HYDRA target kernels must be odd and fit inside the target patch")
+    if objective["groups"] < 2 or objective["groups"] % 2:
+        raise ValueError("HYDRA target groups must be even and at least two")
+
 
 def validate_objective(objective):
     if objective is None:
+        return
+    if isinstance(objective, dict) and objective.get("name") == DEFAULT_HYDRA_TARGET["name"]:
+        _validate_target(objective)
         return
     if not isinstance(objective, dict) or set(objective) != set(DEFAULT_HYDRA):
         raise ValueError(

@@ -52,17 +52,19 @@ def validate_pretraining_source(payload, config, manifest, *, mode):
         )
 
 
-def load_encoder(checkpoint):
+def load_encoder(checkpoint, *, normalization_backend=None):
     payload = torch.load(checkpoint, map_location="cpu", weights_only=True)
     if any(payload["contract"].get(key) != value for key, value in software_contract().items()):
         raise ValueError("Selected checkpoint code or environment differs from this pipeline")
     model = create_model(payload["config"])
     model.load_state_dict(payload["model"], strict=True)
+    if normalization_backend is not None:
+        model.encoder.set_normalization_backend(normalization_backend)
     return model.encoder, payload
 
 
-def classifier(checkpoint, classes, seed):
-    encoder, payload = load_encoder(checkpoint)
+def classifier(checkpoint, classes, seed, *, normalization_backend=None):
+    encoder, payload = load_encoder(checkpoint, normalization_backend=normalization_backend)
     set_seed(stream_seed(seed, "supervised_head"))
     return Classifier(encoder, classes), payload
 

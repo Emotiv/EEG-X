@@ -123,7 +123,8 @@ def run(config, manifest_path, guardian):
                 return
             else:
                 budget = json.loads((Path(manifest["budget"]) / "budget.json").read_text())
-                if budget["used_seconds"] >= budget["limit_seconds"]:
+                if (budget["limit_seconds"] is not None
+                        and budget["used_seconds"] >= budget["limit_seconds"]):
                     raise RuntimeError("The shared GPU-hour budget is exhausted")
                 health = Path(manifest_path).parent / "accounting.json"
                 if stop_requested or (
@@ -133,11 +134,14 @@ def run(config, manifest_path, guardian):
                 child = subprocess.Popen(
                     [
                         sys.executable,
+                        str(Path(__file__).resolve().parent / "child.py"),
+                        str(os.getpid()),
                         str(Path(manifest["source_root"]) / "Main.py"),
                         "--config",
                         str(Path(config).resolve()),
                     ],
                     cwd=manifest["source_root"],
+                    stdin=subprocess.PIPE,
                 )
                 pid, birth = child.pid, process_start(child.pid)
                 mode = "started"
@@ -155,8 +159,12 @@ def run(config, manifest_path, guardian):
             }
             save_receipt(claims / (identity + ".json"), receipt)
             print(f"{mode.upper()} pid={pid} {output}", flush=True)
-            if stop_requested:
+            if stop_requested or select.select([guardian_fd], [], [], 0)[0]:
                 stop()
+            elif child is not None:
+                child.stdin.write(b"G")
+                child.stdin.flush()
+                child.stdin.close()
             ready = select.select([child_fd, guardian_fd], [], [])[0]
             if guardian_fd in ready and child_fd not in ready:
                 raise RuntimeError("Accounting stopped; training was asked to checkpoint")

@@ -18,3 +18,11 @@ wandb/
 1861_EEG_X_Toward_Device_Agnos.pdf
 Checkpoints/
 Results_for_Paper/
+
+/.venv
+
+# Local rerun capacity checks and archive receipts.
+.auto/rerun/
+
+# Isolated browser verification tools.
+.auto/browser-venv/

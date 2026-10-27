@@ -77,6 +77,16 @@ The author confirmed the horizons, subject-wise target ratios, validation for TU
 pretraining, and a shared source model. The proposed TUAB source ratio is recorded
 below as a remaining detail rather than an explicit author confirmation.
 
+| Latest user-selected execution setting | Choice |
+|---|---|
+| Pretraining batches | Microbatch 512 and logical batch 4096, capped by available training windows |
+| GPU backends | Enable fused Soft DiCT and RMSNorm, with native RMSNorm fallback where needed |
+| Determinism and allocation | Keep deterministic algorithms enabled; disable the uninitialized-memory diagnostic fill |
+| Downstream execution | Use fused RMSNorm for linear probing and fine-tuning, including native-backend checkpoints with the same software and environment contract |
+| Quality interpretation | Larger logical batches change optimizer update frequency. Numerical checks do not establish the final paper scores |
+
+These are user-selected execution settings. The existing subject splits and validation-based selection remain the scientific protocol.
+
 For each in-domain split, pretrain only on training subjects. Fit each linear probe
 with the encoder frozen. Save the best reconstruction checkpoint using validation
 loss, probe that checkpoint again, and start fine-tuning from the same checkpoint.
@@ -138,10 +148,10 @@ or extra summary run.
 | Domains | `in_domain`, `cross_domain` |
 | Domain logging | Set `wandb.domain` per configuration; save it in run config, tracking records and model artifact metadata |
 | Stages | `pretrain`, `linear_probe`, `finetune` |
-| Embedded probe sections | `linear_probe/val` and `linear_probe/test`, inside the pretraining run; test curves remain diagnostic |
+| Embedded probe sections | Log canonical `linear_probe/val/*` and `linear_probe/test/*` history keys inside the pretraining run. Show all applicable classification metric trends against pretraining epoch, plus confusion images; test curves remain diagnostic |
 | Repeated runs | 5 distinct completed seeds per target experiment; keep test and incomplete runs out of paper averages |
 | Curves | Use W&B grouping with mean aggregation; optional standard-deviation shading |
-| Final scores | Evaluate the validation-selected checkpoint once per run; write scalar test metrics only to W&B summary, then display one bar per run. Seed grouping uses these summaries; diagnostic probes keep separate epoch curves |
+| Final scores | Evaluate the validation-selected checkpoint once per run; log scalar test metrics once to W&B history and summary so Automated workspaces create charts without manual setup. Final scores remain one value per run; seed grouping uses the summaries; diagnostic probes keep separate epoch curves |
 | Test metrics | Accuracy, balanced accuracy, F1 micro/macro/weighted, macro precision and recall, AUROC, AUPRC and classification loss; binary tasks also report positive-class F1 |
 | Selection record | Log the metric and direction in W&B and checkpoint records; downstream selection maximizes `val/bal_acc` |
 | Classifier workspace | Match Neuralbench DREAMER valence in both fine-tuning domains; use actual optimizer names, epoch, best_epoch and trainer/global_step. Native bars use bare summary metric keys. Pretraining adds diagnostic probe trends |
@@ -241,16 +251,19 @@ Its learned-lookup comparison arm is separate; the selected encoding is fixed.
 
 Work sequence:
 
-The user expanded execution to four dataset pipelines on each of two physical
-GPUs. GPU one retains seeds 241 through 243; GPU zero takes 244 and 245 and the
-single shared TUAB source. Keep each cohort sequential and every logical output
-unique. Preserve checkpoint progress and the frozen scientific source. Transfer ownership
-through verified checkpoint resume into fresh attempt directories; do not retire
-parents of live training processes.
-Each target cohort waits for successful source finalization. The unchanged
-aggregate GPU-hour cap covers both devices; the auxiliary GPU-zero ledger is
-only a usage meter. Root operational scripts manage this fixed handoff and
-accounting, without a model sweep or local seed-aggregation controller.
+| Fresh rerun execution | Selected behavior |
+|---|---|
+| Reference project | Rename old `eegx` to `eegx-bs256`; preserve its 23 runs and local results |
+| New project | Create private `eegx` with fresh run identities |
+| Study | Restart all 81 tasks using the existing HDF5 files and saved subject splits |
+| Batches | Pretraining microbatch 512, global batch 4096 |
+| Concurrency | Capacity checks passed with 7 simultaneous TUAB processes on each physical GPU |
+| Time policy | User removed the previous 72 GPU-hour cap for the fresh rerun; retain uncapped usage meters |
+| Ownership | Fresh outputs, per-output locks, dependency completion checks, frozen reviewed source and safe interruption |
+
+Do not overwrite or reset the old attempts and accounting. Review the generated
+queue before starting training. Downstream runs use only the selected checkpoints
+from this fresh study.
 
 - [x] Inspect the latest manuscript and scaling table.
 - [x] Check retained EEG-X2 spatial encoding and current teacher behavior.
@@ -264,7 +277,7 @@ accounting, without a model sweep or local seed-aggregation controller.
 
 The [paper review](paper-review.md) records manuscript evidence. Train from scratch
 in fresh output directories; historical checkpoint compatibility is outside scope. Save new
-checkpoints for reproducible resume and keep the existing shared budget ledger.
+checkpoints for reproducible resume and preserve historical usage ledgers separately.
 Keep all work local until publication is explicitly requested.
 
 Current native release: prepare raw sources with the documented EEG-X2 recipe

@@ -27,7 +27,7 @@ The executable EEG-X code lives in one package:
 ```text
 pretrain/
   __main__.py       command entrypoint
-  models/           EEG-X encoder, Predictor, reconstruction and Soft Hydra
+  models/           EEG-X encoder, Predictor, reconstruction and Soft DiCT
   datasets/         historical array loader and raw STEW reader
   pipeline/         preparation, training and evaluation
   optimizers/       local StableAdamW
@@ -113,6 +113,54 @@ For one run, replace `seeds` with `seed: 241`; its files go directly into `outpu
 To resume that seed, set `resume` to its previous `training/last.pth` and choose a
 fresh output. Keep the other settings and input data unchanged. Resume paths for multiple seeds use `{seed}`. A shared TUAB source checkpoint
 uses the same path for every target seed.
+
+## Bounded performance checks
+
+The separate configurations in `configs/benchmarks/` prepare a pretraining
+microbatch of 512 and a global batch of 4096. These are engineering probes;
+the active paper configurations remain separate. Each optimizer update uses
+eight microbatches. Changing the global batch creates a different training
+recipe and is not an exact resume of the current paper runs.
+
+```bash
+python scripts/profile_training.py --config configs/benchmarks/tuab.yaml \
+  --output .runs/benchmark-tuab --updates 2 --warmup 1 --profile
+```
+
+The driver uses the real training loss, stops after bounded updates, records
+memory and timings, and creates no W&B run. It requires the original shared
+budget. By default, it refuses an active paper queue or device meter. The explicit
+`--reserve-live-slot` option reserves a bounded measurement window through the
+same accounting lock. Running paper tasks keep computing, but epoch accounting
+and new admissions can wait until the reservation ends. The driver releases its
+lease before unlocking and exports traces afterward. It never resets the budget.
+Run comparisons without profiling on an otherwise idle GPU before claiming an
+isolated speedup.
+
+The bounded dictionary implementation preserves FP32 features, fixed filters
+and temporal counts. Forward activations are pooled and recomputed for backward
+instead of retaining every full temporal probability tensor. The default
+`dictionary_backend: torch` uses deterministic matrix operations and a native
+gradient fold. The optional `dictionary_backend: triton` fuses dictionary work
+on CUDA and supports first-order gradients only. Its group and kernel counts
+must be powers of two, with at most 256 filters in total. Use
+`configs/benchmarks/tuab-triton.yaml` to benchmark it. Runtime contracts record
+the installed Triton version. Full-model `torch.compile` performance remains
+unvalidated. Unrelated threads must not change process-wide CUDA precision while
+the model is running. See the [measured audit](docs/performance-audit.md).
+
+An alternative engineering configuration, `configs/benchmarks/tuab-hydra-target.yaml`,
+uses `objective.name: raw_hydra_patch_target_v1`. It keeps waveform reconstruction
+and adds a decoder head that predicts detached HYDRA features for each channel
+and non-overlapping target region. No gradient passes through HYDRA. Its explicit
+`patch_size`, `kernel_size`, `groups`, `k`, `weight` and `seed` define a different
+objective from SoftDiCT. Target regions must contain complete model patches and
+divide the input duration. The variant uses the Torch backend and keeps fixed
+filters in its checkpoint. A target region contributes when any constituent
+model patch is masked. The head pools all decoder tokens in that region, so its
+auxiliary gradient can also reach visible tokens within a contributing region.
+Fully visible regions are excluded. Validation still selects by masked waveform MSE.
+This is an optional experiment, not a replacement for active paper settings.
 
 `device: cuda:1` selects physical GPU 1 and preserves the existing shared budget.
 For a CPU check, use `device: cpu` and `precision: fp32`. Inputs use the prepared
@@ -251,9 +299,9 @@ In W&B, group by `model_name`, `task_name` and `stage`. Filter to the same
 `recipe_id`, with `run_status: complete`. Compare the individual seeds or display
 mean and standard deviation. For paper results, include all distinct completed
 seeds and use final `test/*` values from validation-selected checkpoints.
-Final test scalars are saved only in W&B summary and displayed as bars, with one
-value per run. Training and validation keep epoch curves.
-`diagnostic/test/*` and `selected/diagnostic/test/*` remain diagnostic.
+Final test scalars are logged once to history and summary after checkpoint selection.
+Native automated workspaces discover these metrics without manual panels. Training and validation keep epoch curves.
+`linear_probe/test/*` and `selected/linear_probe/test/*` remain diagnostic.
 
 Each W&B run enables native system monitoring and stdout/stderr capture. Open
 the run's System tab for resource metrics and Logs for console output. GPU metrics
@@ -262,7 +310,7 @@ of training epochs, so very short runs may not contain a full sampling interval.
 
 | Run | `stage` / Job Type | `evaluation_mode` | Metrics |
 |---|---|---|---|
-| Pretraining with embedded probes | `pretrain` | `pretrain` | `probe/validation/*`, `diagnostic/test/*` |
+| Pretraining with embedded probes | `pretrain` | `pretrain` | `linear_probe/val/*`, `linear_probe/test/*` |
 | In-domain fine-tuning | `finetune` | `finetune` | `val/*` curves; final `test/*` |
 | Cross-domain linear probe | `linear_probe` | `linear_probe` | `val/*` curves; final `test/*` |
 
@@ -307,4 +355,4 @@ evaluation domains. Learning-rate names match the actual optimizer:
 `lr-StableAdamW` for pretraining and `lr-AdamW` for current fine-tuning/probing.
 The native workspace utility (`python -m pretrain.workspace --help`) applies a
 shared layout to explicitly selected views. Its bar panels use bare summary keys;
-final test metrics remain summary-only. See [the panel audit](docs/wandb-panel-audit.md).
+final test metrics have one history event and matching summary values. See [the panel audit](docs/wandb-panel-audit.md).

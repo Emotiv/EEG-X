@@ -55,6 +55,58 @@ def test_compute_cpu_fallback_and_validation():
             pass
 
 
+def test_allocation_fill_option_is_scoped_and_checkpointed(monkeypatch):
+    from pretrain.pipeline import checkpoint
+
+    original_fill = torch.utils.deterministic.fill_uninitialized_memory
+    original_deterministic = torch.are_deterministic_algorithms_enabled()
+    original_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    config = {
+        "deterministic": True,
+        "compute": {**DEFAULT_COMPUTE, "fill_uninitialized_memory": False},
+    }
+    with pytest.raises(RuntimeError, match="abort"):
+        with configure_compute(config, "cpu") as effective:
+            assert torch.are_deterministic_algorithms_enabled()
+            assert torch.utils.deterministic.fill_uninitialized_memory is False
+            assert effective["fill_uninitialized_memory"] is False
+            raise RuntimeError("abort")
+    assert torch.utils.deterministic.fill_uninitialized_memory == original_fill
+    assert torch.are_deterministic_algorithms_enabled() == original_deterministic
+    assert torch.is_deterministic_algorithms_warn_only_enabled() == original_warn_only
+    with configure_compute(config, "cpu"):
+        assert torch.utils.deterministic.fill_uninitialized_memory is False
+        with configure_compute(
+            {"compute": {**DEFAULT_COMPUTE, "fill_uninitialized_memory": True}}, "cpu"
+        ):
+            assert torch.utils.deterministic.fill_uninitialized_memory is True
+        assert torch.utils.deterministic.fill_uninitialized_memory is False
+    assert torch.utils.deterministic.fill_uninitialized_memory == original_fill
+    try:
+        torch.utils.deterministic.fill_uninitialized_memory = False
+        with configure_compute({"compute": DEFAULT_COMPUTE}, "cpu"):
+            assert torch.utils.deterministic.fill_uninitialized_memory is False
+    finally:
+        torch.utils.deterministic.fill_uninitialized_memory = original_fill
+
+    monkeypatch.setattr(checkpoint, "software_contract", lambda: {})
+    dataset = {
+        "task": "tuab", "fingerprint": "release", "subjects": [], "windows_sha256": "windows"
+    }
+    legacy = checkpoint.contract({"compute": DEFAULT_COMPUTE}, dataset)
+    candidate = checkpoint.contract(config, dataset)
+    assert "fill_uninitialized_memory" not in legacy["execution"]["requested_compute"]
+    assert set(legacy["execution"]["effective_compute"]) == set(DEFAULT_COMPUTE)
+    assert candidate["execution"]["requested_compute"]["fill_uninitialized_memory"] is False
+    assert candidate["execution"]["effective_compute"]["fill_uninitialized_memory"] is False
+    assert candidate != legacy
+    for invalid in [0, None, "false"]:
+        with pytest.raises(ValueError, match="fill_uninitialized_memory"):
+            invalid_config = {"compute": {**DEFAULT_COMPUTE, "fill_uninitialized_memory": invalid}}
+            with configure_compute(invalid_config, "cpu"):
+                pass
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 def test_cuda_compute_settings_restore_after_error():
     before = (

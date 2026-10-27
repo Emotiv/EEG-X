@@ -48,7 +48,7 @@ def probe(encoder, dataset, config, output, epoch, device, budget, *, tracker=No
         probability = classifier.predict_proba(x)
         scores[role] = classification(y, probability)
         if tracker:
-            prefix = f"probe/{role}" if role == "validation" else "diagnostic/test"
+            prefix = "linear_probe/val" if role == "validation" else "linear_probe/test"
             metrics = {f"{prefix}/{key}": value for key, value in scores[role].items()}
             if isinstance(epoch, int):
                 tracker.log({"epoch": epoch, **metrics})

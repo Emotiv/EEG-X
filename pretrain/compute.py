@@ -25,13 +25,35 @@ def autocast_context(device, precision):
 
 def compute_policy(config):
     policy = config.get("compute", DEFAULT_COMPUTE)
-    if not isinstance(policy, dict) or set(policy) != set(DEFAULT_COMPUTE):
-        raise ValueError("compute requires matmul, convolution and cudnn_benchmark")
+    required = set(DEFAULT_COMPUTE)
+    optional = {"fill_uninitialized_memory"}
+    if (
+        not isinstance(policy, dict)
+        or not required <= policy.keys()
+        or policy.keys() - required - optional
+    ):
+        raise ValueError(
+            "compute requires matmul, convolution and cudnn_benchmark; "
+            "fill_uninitialized_memory is optional"
+        )
     if policy["matmul"] not in {"tf32", "ieee"} or policy["convolution"] not in {"tf32", "ieee"}:
         raise ValueError("CUDA math precision must be tf32 or ieee")
     if type(policy["cudnn_benchmark"]) is not bool:
         raise ValueError("cudnn_benchmark must be boolean")
+    if (
+        "fill_uninitialized_memory" in policy
+        and type(policy["fill_uninitialized_memory"]) is not bool
+    ):
+        raise ValueError("fill_uninitialized_memory must be boolean")
     return dict(policy)
+
+
+def effective_compute_policy(config, device):
+    """Resolve the policy recorded in checkpoints for the selected device."""
+    policy = compute_policy(config)
+    if torch.device(device).type != "cuda":
+        policy.update(matmul="ieee", convolution="ieee", cudnn_benchmark=False)
+    return policy
 
 
 @contextmanager
@@ -40,7 +62,7 @@ def _configure_compute(config, device):
     policy = compute_policy(config)
     device = torch.device(device)
     if device.type != "cuda":
-        yield {"matmul": "ieee", "convolution": "ieee", "cudnn_benchmark": False}
+        yield effective_compute_policy(config, device)
         return
     if config["precision"] == "bf16" and not torch.cuda.is_bf16_supported():
         raise ValueError("This CUDA device does not support BF16 training")
@@ -67,11 +89,19 @@ def configure_compute(config, device):
     deterministic = config.get("deterministic", True)
     if type(deterministic) is not bool:
         raise ValueError("deterministic must be boolean")
+    policy = compute_policy(config)
     previous = torch.are_deterministic_algorithms_enabled()
     warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    previous_fill = torch.utils.deterministic.fill_uninitialized_memory
     try:
         torch.use_deterministic_algorithms(deterministic)
+        if "fill_uninitialized_memory" in policy:
+            torch.utils.deterministic.fill_uninitialized_memory = policy["fill_uninitialized_memory"]
         with _configure_compute(config, device) as effective:
             yield effective
     finally:
-        torch.use_deterministic_algorithms(previous, warn_only=warn_only)
+        try:
+            if "fill_uninitialized_memory" in policy:
+                torch.utils.deterministic.fill_uninitialized_memory = previous_fill
+        finally:
+            torch.use_deterministic_algorithms(previous, warn_only=warn_only)

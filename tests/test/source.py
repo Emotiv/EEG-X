@@ -161,6 +161,64 @@ def test_main_accepts_the_matching_paper_source(tmp_path, source_task, target_ta
     assert not (paper_output / "wandb.json").exists()
 
 
+def test_fused_norm_checkpoint_transfers_to_probe_and_finetune(tmp_path):
+    import torch
+
+    from pretrain.pipeline.downstream import classifier
+
+    source = dataset(tmp_path / "source", "dreamer_arousal")
+    config = tmp_path / "run.yaml"
+    trained = invoke(config, source, tmp_path / "pretrain", normalization_backend="triton")
+    assert trained.returncode == 0, trained.stdout + trained.stderr
+    checkpoint = tmp_path / "pretrain/training/best.pth"
+    payload = torch.load(checkpoint, map_location="cpu", weights_only=True)
+    assert payload["config"]["normalization_backend"] == "triton"
+    assert payload["model"]["_extra_state"]["normalization_backend"] == "triton"
+    model, _ = classifier(checkpoint, 2, 241)
+    assert model.encoder.normalization_backend == "triton"
+    assert model.head[0].backend == "triton"
+    for stage in ("linear_probe", "finetune"):
+        completed = invoke(config, source, tmp_path / stage, stage=stage, checkpoint=checkpoint)
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        result = json.loads((tmp_path / stage / "training/result.json").read_text())
+        assert result["status"] == "complete"
+        assert result["selection"]["pretraining_contract"]["config"]["normalization_backend"] == "triton"
+
+
+def test_downstream_backend_option_applies_to_an_existing_native_checkpoint(tmp_path):
+    import torch
+
+    from pretrain.models.attention import MultiHeadAttention
+    from pretrain.normalization import RMSNorm
+    from pretrain.pipeline.dataset import DatasetReference, Windows
+    from pretrain.pipeline.downstream import classifier
+
+    source = dataset(tmp_path / "source", "dreamer_arousal")
+    config = tmp_path / "run.yaml"
+    trained = invoke(config, source, tmp_path / "pretrain")
+    assert trained.returncode == 0, trained.stdout + trained.stderr
+    checkpoint = tmp_path / "pretrain/training/best.pth"
+    original, _ = classifier(checkpoint, 2, 241)
+    selected, _ = classifier(checkpoint, 2, 241, normalization_backend="triton")
+    assert selected.encoder.normalization_backend == "triton"
+    assert all(module.backend == "triton" for module in selected.modules() if isinstance(module, RMSNorm))
+    assert all(module.normalization_backend == "triton" for module in selected.modules()
+               if isinstance(module, MultiHeadAttention) and module.qk_normalization == "rmsnorm")
+    signal = torch.randn(1, len(CHANNELS), 256, generator=torch.Generator().manual_seed(241))
+    ids = Windows(DatasetReference(source, 241, "subject_holdout"), "train", verify_signals=False).ids
+    original.eval()
+    selected.eval()
+    with torch.inference_mode():
+        torch.testing.assert_close(original(signal, ids), selected(signal, ids), rtol=0, atol=0)
+    for stage in ("linear_probe", "finetune"):
+        completed = invoke(config, source, tmp_path / stage, stage=stage, checkpoint=checkpoint,
+                           normalization_backend="triton")
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        result = json.loads((tmp_path / stage / "training/result.json").read_text())
+        assert result["status"] == "complete"
+        assert result["selection"]["contract"]["config"]["normalization_backend"] == "triton"
+
+
 def test_tuab_source_encoder_is_shared_by_target_seeds_in_both_downstream_modes(tmp_path):
     source = dataset(tmp_path / "source", "tuab")
     target = dataset(tmp_path / "target", "crowdsourced")
@@ -200,3 +258,19 @@ def test_tuab_source_encoder_is_shared_by_target_seeds_in_both_downstream_modes(
             )
             split = json.loads((root / "split.json").read_text())
             assert split["split_seed"] == seed
+
+
+def test_checkpoint_contract_detects_an_actual_triton_runtime_change(monkeypatch):
+    from importlib import metadata
+    from pretrain.pipeline.checkpoint import software_contract
+
+    original = metadata.version
+    before = software_contract()
+
+    def changed_version(name):
+        return "999.0.0" if name == "triton" else original(name)
+
+    monkeypatch.setattr(metadata, "version", changed_version)
+    after = software_contract()
+    assert before != after
+    assert after["triton"] == "999.0.0"

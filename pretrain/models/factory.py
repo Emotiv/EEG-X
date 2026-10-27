@@ -30,6 +30,7 @@ def resolve_model_config(config):
         "width": 64,
         "heads": 8,
         "dropout": 0.1,
+        "dictionary_backend": "torch",
         **supplied,
     }
     if resolved["model"] != "eegx_hybrid_v2":
@@ -41,6 +42,9 @@ def resolve_model_config(config):
     if resolved["heads"] != 8 or resolved["width"] % resolved["heads"]:
         raise ValueError("EEG-X requires eight heads and a width divisible by eight")
     resolved["size"] = f"d{resolved['depth']}w{resolved['width']}"
+    normalization_backend = resolved.get("normalization_backend", "torch")
+    if not isinstance(normalization_backend, str) or normalization_backend not in {"torch", "triton"}:
+        raise ValueError("normalization_backend must be torch or triton")
     if "objective" not in resolved:
         resolved["objective"] = {
             **copy.deepcopy(DEFAULT_HYDRA),
@@ -49,6 +53,14 @@ def resolve_model_config(config):
     elif isinstance(resolved["objective"], dict):
         resolved["objective"].setdefault("seed", resolved.get("seed", DEFAULT_HYDRA["seed"]))
     validate_objective(resolved["objective"])
+    if not isinstance(resolved["dictionary_backend"], str) or resolved[
+        "dictionary_backend"
+    ] not in {"torch", "triton"}:
+        raise ValueError("dictionary_backend must be torch or triton")
+    if (resolved["objective"] is not None
+            and resolved["objective"]["name"] == "raw_hydra_patch_target_v1"
+            and resolved["dictionary_backend"] != "torch"):
+        raise ValueError("HYDRA patch targets use the torch backend")
     return resolved
 
 
@@ -71,7 +83,8 @@ class Classifier(nn.Module):
         super().__init__()
         self.encoder = encoder
         self.head = nn.Sequential(
-            RMSNorm(encoder.embed_dim), nn.Dropout(0.1), nn.Linear(encoder.embed_dim, classes)
+            RMSNorm(encoder.embed_dim, backend=getattr(encoder, "normalization_backend", "torch")),
+            nn.Dropout(0.1), nn.Linear(encoder.embed_dim, classes)
         )
         assert_all_rms(self)
 

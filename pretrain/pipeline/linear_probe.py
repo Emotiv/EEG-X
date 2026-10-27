@@ -42,7 +42,7 @@ def run(config, dataset, checkpoint, output, *, device="cpu", budget=None, track
     device = torch.device(device)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
-    encoder, payload = load_encoder(checkpoint)
+    encoder, payload = load_encoder(checkpoint, normalization_backend=config.get("normalization_backend"))
     train, validation = Windows(dataset, "train"), Windows(dataset, "validation")
     from pretrain.pipeline.splits import validate_run_dataset
 
@@ -128,12 +128,8 @@ def run(config, dataset, checkpoint, output, *, device="cpu", budget=None, track
     probabilities = probe.predict_proba(x)
     scores = classification(y, probabilities)
     if tracker:
-        tracker.summary(
-            {
-                **{f"val/{key}": value for key, value in validation_scores.items()},
-                **{f"test/{key}": value for key, value in scores.items()},
-            }
-        )
+        tracker.summary({f"val/{key}": value for key, value in validation_scores.items()})
+        tracker.final_test(scores)
         tracker.confusion(y, probabilities)
     atomic_json(output / "attention.json", attention_backends(encoder))
     np.savez_compressed(

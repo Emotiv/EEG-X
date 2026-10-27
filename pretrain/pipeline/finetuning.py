@@ -90,7 +90,10 @@ def run(
         raise ValueError("Early stopping requires positive patience and nonnegative min_delta")
     config["pretraining_checkpoint_sha256"] = sha256_file(checkpoint)
     provenance = contract(config, train.metadata, device=device)
-    model, pretrained = classifier(checkpoint, len(train.metadata["classes"]), config["seed"])
+    model, pretrained = classifier(
+        checkpoint, len(train.metadata["classes"]), config["seed"],
+        normalization_backend=config.get("normalization_backend"),
+    )
     validate_pretraining_source(pretrained, config, train.metadata, mode="finetune")
     model.to(device)
     if tracker:
@@ -310,12 +313,7 @@ def run(
             labels, probabilities, identities = predictions(model, test, config, device, budget)
             scores = classification(labels, probabilities)
             if tracker:
-                tracker.summary(
-                    {
-                        "selected/epoch": best["epoch"],
-                        **{f"test/{key}": value for key, value in scores.items()},
-                    }
-                )
+                tracker.final_test(scores)
                 tracker.confusion(labels, probabilities)
             atomic_json(output / "attention.json", attention_backends(model))
             np.savez_compressed(

@@ -45,6 +45,81 @@ def test_prepared_windows_preserve_disjoint_subjects_and_labels(tmp_path):
     assert len(metadata["subjects"]) == 10
 
 
+def test_early_loader_exit_drains_only_inflight_batches(tmp_path):
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+    import textwrap
+
+    source = prepared_fixture(tmp_path / "source")
+    trace = tmp_path / "reads.txt"
+    script = tmp_path / "loader_shutdown.py"
+    script.write_text(textwrap.dedent('''
+        import sys
+        import torch
+        from torch.utils.data import Dataset
+        from pretrain.pipeline.data import Windows, batches
+
+        class CountedWindows(Dataset):
+            def __init__(self, path, trace):
+                self.view = Windows(path, "train")
+                self.trace = trace
+            def __len__(self):
+                return len(self.view) * 64
+            def __getitem__(self, index):
+                item = self.view[index % len(self.view)]
+                item["eeg"] = item["eeg"].repeat(7, 1)
+                item["channel_ids"] = torch.arange(14)
+                with open(self.trace, "a") as handle:
+                    handle.write("x\\n")
+                return item
+
+        if __name__ == "__main__":
+            for _ in range(3):
+                for batch in batches(CountedWindows(sys.argv[1], sys.argv[2]), batch_size=64,
+                                     seed=241, workers=2, shuffle=False):
+                    break
+            print("completed", flush=True)
+    '''))
+    root = Path(__file__).resolve().parents[3]
+    env = {**os.environ, "PYTHONPATH": str(root), "CUDA_VISIBLE_DEVICES": "",
+           "OMP_NUM_THREADS": "2", "MKL_NUM_THREADS": "2", "OPENBLAS_NUM_THREADS": "2"}
+    completed = subprocess.run([sys.executable, str(script), str(source), str(trace)],
+                               cwd=root, env=env, capture_output=True, text=True, timeout=45)
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "completed" in completed.stdout
+    assert "terminate called without an active exception" not in completed.stderr
+    assert "is killed by signal: Aborted" not in completed.stderr
+    assert len(trace.read_text().splitlines()) <= 3 * 64 * 6
+
+
+@pytest.mark.parametrize("workers, shuffle", [(0, False), (0, True), (2, True)])
+def test_managed_loader_preserves_native_batch_order_and_rng(tmp_path, workers, shuffle):
+    import torch
+    from torch.utils.data import DataLoader
+
+    from pretrain.pipeline.data import batches, collate
+
+    view = Windows(prepared_fixture(tmp_path / "source"), "train")
+    reference = DataLoader(
+        view, batch_size=7, shuffle=shuffle, drop_last=False, collate_fn=collate,
+        generator=torch.Generator().manual_seed(241), num_workers=workers,
+        multiprocessing_context="spawn" if workers else None,
+    )
+    selected = batches(view, batch_size=7, seed=241, workers=workers, shuffle=shuffle)
+    assert len(reference) == len(selected)
+    state = torch.get_rng_state().clone()
+    for _ in range(2):
+        left, right = list(reference), list(selected)
+        assert len(left) == len(right)
+        for expected, actual in zip(left, right):
+            assert expected["window_id"] == actual["window_id"]
+            for key in ("eeg", "channel_ids", "label"):
+                assert torch.equal(expected[key], actual[key])
+    assert torch.equal(state, torch.get_rng_state())
+
+
 def test_prepared_signal_mutation_is_rejected(tmp_path):
     path = prepared_fixture(tmp_path / "prepared")
     row = int(Windows(path, "train").rows[0])

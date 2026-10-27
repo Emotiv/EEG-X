@@ -96,11 +96,10 @@ def test_both_downstream_modes_select_before_opening_test(tmp_path, monkeypatch)
             scores = module.run(config, manifest, checkpoint, output, tracker=Tracker(recorded))
         assert recorded.summary["test/loss"] == scores["loss"]
         assert recorded.summary["test/bal_acc"] == scores["balanced_accuracy"]
-        assert not any(
-            key.startswith("test/") and isinstance(value, (int, float))
-            for row in recorded.rows
-            for key, value in row.items()
-        )
+        final = [row for row in recorded.rows if "test/loss" in row]
+        assert len(final) == 1
+        assert final[0]["test/loss"] == scores["loss"]
+        assert final[0]["test/bal_acc"] == scores["balanced_accuracy"]
         assert 0 <= scores["balanced_accuracy"] <= 1
         assert 0 <= scores["auroc"] <= 1
         saved = np.load(output / "test_predictions.npz")

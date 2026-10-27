@@ -63,6 +63,7 @@ class MultiHeadAttention(nn.Module):
 
         self.dropout = nn.Dropout(p=dropout)
         self.qk_normalization = "none"
+        self.normalization_backend = "torch"
         self.use_sdpa = False
         self.actual_backend = None
 
@@ -79,8 +80,8 @@ class MultiHeadAttention(nn.Module):
         if self.qk_normalization == "rmsnorm":
             from pretrain.normalization import parameter_free_rms_norm
 
-            query = parameter_free_rms_norm(query)
-            key = parameter_free_rms_norm(key)
+            query = parameter_free_rms_norm(query, backend=self.normalization_backend)
+            key = parameter_free_rms_norm(key, backend=self.normalization_backend)
         elif self.qk_normalization != "none":
             raise ValueError(f"Unknown Q/K normalization: {self.qk_normalization}")
 

@@ -114,6 +114,11 @@ def fit_readout(
                 probability = model(validation_x).softmax(-1).numpy()
             scores = classification(val_y, probability)
             history.append({"epoch": epoch, "train_loss": total / len(x), "validation": scores})
+            print(
+                f"linear_probe epoch={epoch} train_loss={total / len(x):.6f} "
+                f"val_loss={scores['loss']:.6f} val_bal_acc={scores['balanced_accuracy']:.6f}",
+                flush=True,
+            )
             if tracker:
                 tracker.log(
                     {

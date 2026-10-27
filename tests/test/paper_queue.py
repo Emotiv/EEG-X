@@ -334,3 +334,77 @@ def test_guardian_stops_at_aggregate_cap_and_drains_meter(tmp_path):
         if owner.poll() is None:
             owner.terminate()
             owner.wait(timeout=10)
+
+
+def test_wrapper_death_requests_training_checkpoint(tmp_path):
+    import select
+    import signal
+    from process import open_process, signal_process
+
+    command, _ = blocked_fixture(tmp_path)
+    owner = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    child_handle = None
+    try:
+        while 'READY' not in owner.stdout.readline():
+            assert owner.poll() is None
+        receipt = next((tmp_path / 'claims').glob('*.json'))
+        child_pid = json.loads(receipt.read_text())['pid']
+        child_handle = open_process(child_pid)
+        owner.kill()
+        owner.wait(timeout=10)
+        assert select.select([child_handle], [], [], 5)[0], 'Training outlived its killed wrapper'
+        result = json.loads((tmp_path / 'output/training/result.json').read_text())
+        assert result['status'] == 'budget_stopped'
+    finally:
+        if child_handle is not None:
+            signal_process(child_handle, signal.SIGTERM)
+            os.close(child_handle)
+        if owner.poll() is None:
+            owner.terminate()
+            owner.wait(timeout=10)
+        owner.stdout.close()
+        owner.stderr.close()
+
+
+def test_training_waits_for_durable_wrapper_receipt(tmp_path):
+    import select
+    import signal
+    from process import open_process, signal_process
+
+    command, _ = blocked_fixture(tmp_path)
+    script = tmp_path / 'delayed_receipt.py'
+    script.write_text(
+        'import sys\n'
+        f'sys.path.insert(0,{str(SCRIPTS)!r})\n'
+        'import task\n'
+        'original=task.save_receipt\n'
+        'def delayed(path,value):\n'
+        ' print("BEFORE_RECEIPT",value["pid"],flush=True)\n'
+        ' sys.stdin.readline()\n'
+        ' original(path,value)\n'
+        'task.save_receipt=delayed\n'
+        'task.main()\n')
+    command[1] = str(script)
+    owner = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True)
+    child_handle = None
+    try:
+        line = owner.stdout.readline().strip().split()
+        assert line[0] == 'BEFORE_RECEIPT'
+        child_handle = open_process(int(line[1]))
+        select.select([owner.stdout], [], [], 1)
+        assert not (tmp_path / 'executions').exists()
+        owner.kill()
+        owner.wait(timeout=10)
+        assert select.select([child_handle], [], [], 5)[0]
+        assert not (tmp_path / 'executions').exists()
+    finally:
+        if child_handle is not None:
+            signal_process(child_handle, signal.SIGTERM)
+            os.close(child_handle)
+        if owner.poll() is None:
+            owner.terminate()
+            owner.wait(timeout=10)
+        owner.stdin.close()
+        owner.stdout.close()
+        owner.stderr.close()

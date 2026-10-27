@@ -136,7 +136,9 @@ def test_embedded_probes_share_pretraining_run_then_finetuning_logs_final_test(
         "workers": 0,
         "probe_interval": 1,
         "diagnostic_test_probes": True,
-        "objective": None,
+        "objective": {"name": "raw_soft_dict_v2", "weight": 1.0,
+                      "temperature": 1.0, "k": 2, "groups": 2,
+                      "kernel_sizes": [3], "dilations": [1]},
         "wandb": {"enabled": True, "name": "test_embedded_seed_{seed}"},
     }
     path = tmp_path / "run.yaml"
@@ -144,17 +146,24 @@ def test_embedded_probes_share_pretraining_run_then_finetuning_logs_final_test(
     run_config(path)
     assert len(calls) == 1
     pretraining = runs[0]
-    for prefix in ("probe/validation", "diagnostic/test"):
+    for prefix in ("linear_probe/val", "linear_probe/test"):
         rows = [row for row in pretraining.rows if f"{prefix}/acc" in row]
         assert [row["epoch"] for row in rows] == [1, 2]
         assert f"selected/{prefix}/acc" in pretraining.summary
+        metrics = {"loss", "acc", "bal_acc", "auroc", "auprc", "f1_score_micro", "f1_score_macro",
+                   "weighted_f1", "precision_macro", "recall_macro", "f1_score_binary"}
+        assert all({prefix + "/" + key for key in metrics} <= set(row) for row in rows)
+    validation_rows = [row for row in pretraining.rows if "val/soft_dict" in row]
+    assert [row["epoch"] for row in validation_rows] == [1, 2]
+    assert all(row["val/soft_dict"] >= 0 for row in validation_rows)
+    assert all(row["val/loss"] == row["val/raw_mse"] for row in validation_rows)
     assert any("train/loss_step" in row for row in pretraining.rows)
     updates = [row for row in pretraining.rows if "train/loss_step" in row]
     assert [row["trainer/global_step"] for row in updates] == list(range(1, len(updates) + 1))
     assert all(row["lr-StableAdamW"] == row["train/lr"] for row in updates)
     assert any("best_epoch" in row for row in pretraining.rows)
     assert [row["epoch"] for row in pretraining.rows if "train/loss_epoch" in row] == [1, 2]
-    assert "selected/probe/validation/bal_acc" in pretraining.summary
+    assert "selected/linear_probe/val/bal_acc" in pretraining.summary
     assert not any("balanced_accuracy" in key for row in pretraining.rows for key in row)
     assert not any(key.startswith("test/") for row in pretraining.rows for key in row)
     checkpoint = tmp_path / "pretrain/training/best.pth"
@@ -170,8 +179,8 @@ def test_embedded_probes_share_pretraining_run_then_finetuning_logs_final_test(
     assert pretraining.config["n_trainable_params"] == pretraining.config["n_total_params"]
     assert pretraining.artifacts[0][1]["aliases"] == ["best"]
     assert "best.pth" in pretraining.artifacts[0][0].manifest.entries
-    assert any("probe/validation/confusion_matrix" in row for row in pretraining.rows)
-    assert any("diagnostic/test/confusion_matrix" in row for row in pretraining.rows)
+    assert any("linear_probe/val/confusion_matrix" in row for row in pretraining.rows)
+    assert any("linear_probe/test/confusion_matrix" in row for row in pretraining.rows)
     subjects = json.loads((tmp_path / "pretrain/split.json").read_text())["subjects"]
     groups = [
         {s for s, role in subjects.items() if role == split}
@@ -208,7 +217,10 @@ def test_embedded_probes_share_pretraining_run_then_finetuning_logs_final_test(
     assert tuning.artifacts[0][1]["aliases"] == ["best"]
     assert "best.pth" in tuning.artifacts[0][0].manifest.entries
     final = [row for row in tuning.rows if "test/acc" in row]
-    assert final == []
+    assert len(final) == 1
+    assert final[0]["epoch"] == 2
+    assert final[0]["test/acc"] == tuning.summary["test/acc"]
+    assert final[0]["test/loss"] == tuning.summary["test/loss"]
     matrix = [row["test/confusion_matrix"] for row in tuning.rows if "test/confusion_matrix" in row]
     assert len(matrix) == 1 and isinstance(matrix[0], wandb.Image)
     result = json.loads((tmp_path / "finetune/training/result.json").read_text())
@@ -220,6 +232,17 @@ def test_embedded_probes_share_pretraining_run_then_finetuning_logs_final_test(
     assert tuning.summary["test/bal_acc"] == result["test"]["balanced_accuracy"]
     assert "test/balanced_accuracy" not in tuning.summary
     assert pretraining.summary["run_status"] == tuning.summary["run_status"] == "complete"
+
+    settings.update(stage="linear_probe", output="standalone_probe")
+    settings["wandb"]["name"] = "test_standalone_probe_seed_{seed}"
+    path.write_text(yaml.safe_dump(settings))
+    run_config(path)
+    standalone = runs[2]
+    events = [row for row in standalone.rows if "test/loss" in row]
+    assert len(events) == 1
+    assert events[0]["test/loss"] == standalone.summary["test/loss"]
+    assert events[0]["test/bal_acc"] == standalone.summary["test/bal_acc"]
+    assert events[0]["epoch"] == 2
 
 
 def test_linear_probe_run_uses_the_same_stage_and_job_type(tmp_path, monkeypatch):
@@ -375,3 +398,18 @@ def test_linear_readout_logs_neuralbench_names_and_weighted_epoch_loss(tmp_path,
         assert row["train/loss_epoch"] == probe.history[index]["train_loss"]
         assert "val/bal_acc" in row
         assert "val/balanced_accuracy" not in row
+
+
+def test_final_test_scores_log_once_and_keep_summary_values():
+    from pretrain.tracking import Tracker
+
+    run = RecordedRun()
+    logger = Tracker(run)
+    logger.log({"epoch": 2, "trainer/global_step": 12})
+    logger.final_test({"loss": 0.6, "balanced_accuracy": 0.7, "acc": 0.75})
+    expected = {"test/loss": 0.6, "test/bal_acc": 0.7, "test/acc": 0.75}
+    assert all(run.summary[key] == value for key, value in expected.items())
+    assert run.rows[-1] == {"epoch": 2, "trainer/global_step": 12, **expected}
+    with pytest.raises(RuntimeError, match="already been logged"):
+        logger.final_test({"loss": 0.6})
+    assert len([row for row in run.rows if "test/loss" in row]) == 1

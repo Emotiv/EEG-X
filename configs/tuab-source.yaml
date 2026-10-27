@@ -12,8 +12,8 @@ dropout: 0.1
 epochs: 100
 warmup_epochs: 10
 precision: bf16
-logical_batch: 256
-microbatch: 16
+logical_batch: 4096
+microbatch: 512
 workers: 2
 compile: false
 deterministic: true
@@ -60,3 +60,10 @@ pretraining_scope: tuab_source
 purpose: paper
 shared_gpu: true
 concurrent_gpu_runs: 4
+dictionary_backend: triton
+normalization_backend: triton
+compute:
+  matmul: tf32
+  convolution: ieee
+  cudnn_benchmark: false
+  fill_uninitialized_memory: false

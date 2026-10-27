@@ -5,7 +5,7 @@ from pretrain.pipeline import readout
 from pretrain.pipeline.budget import NoGpuBudget
 
 
-def test_probe_stops_on_validation_and_restores_rng(tmp_path, monkeypatch):
+def test_probe_stops_on_validation_and_restores_rng(tmp_path, monkeypatch, capsys):
     x = np.array([[10, 0], [12, 1], [14, 2], [16, 3]], dtype=np.float32)
     y = np.array([0, 1, 0, 1])
     validation_scores = iter(
@@ -38,3 +38,9 @@ def test_probe_stops_on_validation_and_restores_rng(tmp_path, monkeypatch):
     assert saved["epoch"] == 2
     for name, value in probe.model.state_dict().items():
         torch.testing.assert_close(value, saved["model"][name])
+
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == len(probe.history)
+    assert all(line.startswith("linear_probe epoch=") for line in lines)
+    assert "val_bal_acc=0.800000" in lines[1]
+    assert all("test/" not in line for line in lines)

@@ -43,6 +43,8 @@ TRAINING_KEYS = {
     "early_stopping",
     "objective",
     "compile",
+    "dictionary_backend",
+    "normalization_backend",
     "deterministic",
     "compute",
     "optimizer",
@@ -222,7 +224,9 @@ def run_config(path):
             raise FileNotFoundError(
                 f"Shared budget ledger does not exist: {ledger / 'budget.json'}"
             )
-        budget = Budget(ledger, setup_seconds=300, max_concurrent=settings["concurrent_gpu_runs"])
+        budget = Budget.from_ledger(
+            ledger, setup_seconds=300, max_concurrent=settings["concurrent_gpu_runs"]
+        )
         budget.initialize()
 
     root.mkdir(parents=True, exist_ok=False)

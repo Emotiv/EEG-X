@@ -138,7 +138,7 @@ Both tokenizer branches describe the same channel and time patch. The revised pa
 | Feature pooling | Mean patch tokens |
 | Teacher and latent losses | Retain the existing one-layer cross-attention Predictor in the active reconstruction path. Omit the unused teacher target computation. Add the required four-layer Transformer decoder before the per-patch raw waveform projection; add no latent objective |
 
-These are selected implementation choices, not additional parameters supplied by Navid. Train new models from scratch; support for historical checkpoints is outside scope. Versioned checkpoints record the selected model and objective for integrity and reproducible resume. Use fresh output directories and carry the existing budget ledger forward.
+These are selected implementation choices, not additional parameters supplied by Navid. Train new models from scratch; support for historical checkpoints is outside scope. Versioned checkpoints record the selected model and objective for integrity and reproducible resume. Use fresh output directories and separate usage meters for this rerun; preserve historical ledgers unchanged.
 
 ### Soft DiCT objective
 
@@ -156,8 +156,9 @@ Compare the reconstructed waveform with a detached target. Keep the feature tran
 | Scheduler starting point | Warmup for 10 epochs, then cosine decay to 1e-5 over the maximum 100-epoch horizon; freeze the exact schedule before training |
 | Early stopping default | Validation masked raw MSE; patience 10 epochs after warmup; minimum improvement 1e-4; retain the best checkpoint |
 | Validation masks | Fixed within a seed and shared across configurations; training masks vary deterministically |
-| Logical pretraining batch | Minimum of 256 and available training windows; benchmark and record the microbatch for each input size; keep incomplete batches |
+| Pretraining batches | Requested microbatch 512 and logical batch 4096, capped by available training windows; keep incomplete batches |
 | Precision | BF16 autocast, FP32 loss reductions and Hydra, TF32 matmul; record effective settings |
+| GPU execution | Use the fused Soft DiCT and RMSNorm backends where supported; use native RMSNorm fallback for unsupported cases. Deterministic algorithms stay enabled; the user selected disabling the uninitialized-memory diagnostic fill |
 | Soft DiCT defaults | Weight 1, temperature 1, 32 kernels per group, 8 groups, lengths 9/15, dilations 1/2/4/8/16; FP32 soft counts and MSE; fixed seeded channelwise filters |
 | Fine-tuning | Train tokenizer, encoder and classifier for at most 20 epochs; select highest validation balanced accuracy; stop after 5 checks without improvement |
 | Supervised optimizer/scheduler | AdamW, learning rate 1e-3, betas (0.9, 0.999), weight decay 0.01 for matrices and zero otherwise; layer learning-rate decay 0.75, warmup 5 epochs then cosine to 1e-6, gradient clipping 1; RMSNorm, dropout 0.1, linear classifier; cross entropy without label smoothing |
@@ -178,7 +179,7 @@ Pin these choices before inspecting test curves. If test feedback guides a chang
 | Reporting unit | Pool windows across held-out subjects; do not average subject scores |
 | Scale | Accuracy, F1, precision, recall and AUC scores are 0-1, higher is better; classification loss and reconstruction MSE are nonnegative, lower is better |
 | Repeated runs | Publish each seed; mean and sample standard deviation only after all 5 seeds complete |
-| Final evaluation | Linear probes and fine-tuning maximize validation balanced accuracy; retain the first checkpoint on ties; early stopping follows the same metric. Pretraining minimizes validation reconstruction loss. Test evaluates the locked checkpoint once; final scalar test metrics are summary-only bars, without an epoch axis |
+| Final evaluation | Linear probes and fine-tuning maximize validation balanced accuracy; retain the first checkpoint on ties; early stopping follows the same metric. Pretraining minimizes validation reconstruction loss. Test evaluates the locked checkpoint once; final scalar test metrics are logged once to history and summary after selection, enabling native Automated workspace charts. They remain a single final value per run, never per-epoch test evaluation |
 | W&B | Log model name, task name, stage, evaluation mode, recipe and seed; online resume reuses the saved run ID |
 | Grouping | No preset grouping. User chooses domain, stage and task in W&B; filter to one model and recipe and include distinct completed seeds |
 
@@ -205,12 +206,12 @@ Implementation and checks must live in this repository. Keep failed and incomple
 
 | Execution and reproducibility | Contract |
 |---|---|
-| Shared GPU budget | 72 GPU-hours across all local experiments and revised runs; carry the existing ledger without resetting it |
-| Setup accounting | Charge 300 seconds once when creating a new budget ledger; preserve existing ledgers without a second setup debit |
+| GPU usage policy | User removed the time cap for the fresh rerun. Use separate uncapped per-GPU usage ledgers and preserve all historical charges and limits |
+| Setup accounting | Preserve historical setup charges. Fresh uncapped ledgers record occupied GPU time without a synthetic setup debit |
 | Device | User-selected paper expansion uses physical GPUs 0 and 1 in explicit shared mode; never stop unrelated workloads |
-| Concurrent tasks | Four pipelines per device. GPU 1 owns seeds 241/242/243; GPU 0 owns 244/245 and the single shared TUAB source. Preserve checkpoint progress, verify completed tasks and lock each output against duplicate dispatch |
-| Aggregate accounting | Keep the original ledger and prior usage. GPU 0 has an auxiliary usage meter, not a second allowance. Charge occupied time once per device, add only new meter debits, and stop study owners safely at the unchanged aggregate cap. Auxiliary configurations require the shared launcher |
-| Queue ownership | Never reparent live training processes. Transfer ownership through checkpoint resume into fresh attempts with the original W&B IDs and unchanged frozen source. Separate queue sessions prevent terminal hangup from bypassing cleanup. Gate GPU 0 on verified resumed GPU 1 IDs, and gate targets on successful source finalization |
+| Concurrent tasks | Capacity-tested limit of 7 tasks per physical GPU, across GPUs 0 and 1. Unique outputs, per-output locks and dependency completion gates prevent duplicate dispatch |
+| Usage accounting | Keep the original ledgers and prior usage unchanged. Fresh meters charge occupied time once per device regardless of concurrent task count. Explicit interruption still requests safe checkpointing |
+| Queue ownership | Start this rerun from scratch with fresh W&B IDs. Never reparent live processes. Freeze the reviewed source, verify generated config hashes and checkpoint dependencies, preserve partial attempts, and bind training children to their task owner. Gate downstream tasks on successful source finalization |
 | Storage | Work volume for code, environment, caches, data, and outputs; retain the home compatibility symlink |
 | Isolation | Fresh output per direct YAML run; preserve safe progress on stop |
 | Frozen evidence | Source revision, uv lockfile, resolved configuration, preprocessing, channel vocabulary, participant splits, data hashes, checkpoints, predictions, metrics, and exclusions |

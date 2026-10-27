@@ -54,19 +54,20 @@ class EEGXEncoder(nn.Module):
     and the tokenizer accepts different task durations without changing weights.
     """
 
-    def __init__(self, width=64, depth=8, heads=8, dropout=0.1):
+    def __init__(self, width=64, depth=8, heads=8, dropout=0.1, *, normalization_backend="torch"):
         super().__init__()
         from pretrain.channel_identity import load_channel_vocabulary
         from pretrain.normalization import RMSNorm
         from pretrain.models.position import FixedChannelEmbedding
 
         self.embed_dim = width
+        self.normalization_backend = normalization_backend
         self.raw_projection = nn.Linear(32, width)
         self.spectral_projection = nn.Linear(17, width)
         self.register_buffer("stft_window", torch.hann_window(32))
         vocabulary = load_channel_vocabulary()
         self.channel_embedding = FixedChannelEmbedding(vocabulary, width)
-        self.norm = RMSNorm(width)
+        self.norm = RMSNorm(width, backend=normalization_backend)
         self.contex_encoder = Encoder(
             {
                 "emb_size": width,
@@ -76,7 +77,20 @@ class EEGXEncoder(nn.Module):
                 "dropout": dropout,
             }
         )
-        _prepare_paper_transformer(self.contex_encoder)
+        _prepare_paper_transformer(self.contex_encoder, normalization_backend)
+
+    def set_normalization_backend(self, backend):
+        """Select the equivalent execution backend for this encoder."""
+        if not isinstance(backend, str) or backend not in {"torch", "triton"}:
+            raise ValueError("normalization_backend must be torch or triton")
+        from pretrain.normalization import RMSNorm
+
+        for module in self.modules():
+            if isinstance(module, RMSNorm):
+                module.backend = backend
+            elif isinstance(module, MultiHeadAttention):
+                module.normalization_backend = backend
+        self.normalization_backend = backend
 
     @staticmethod
     def patchify(eeg):
@@ -126,18 +140,19 @@ class EEGXEncoder(nn.Module):
         return self.forward_features(eeg, channel_ids)
 
 
-def _prepare_paper_transformer(module):
+def _prepare_paper_transformer(module, normalization_backend="torch"):
     """Reuse EEG-X blocks with fused RMSNorm and explicit SDPA dispatch."""
     from pretrain.normalization import RMSNorm
 
     for name, child in list(module.named_children()):
         if isinstance(child, nn.LayerNorm):
-            setattr(module, name, RMSNorm(child.normalized_shape[-1]))
+            setattr(module, name, RMSNorm(child.normalized_shape[-1], backend=normalization_backend))
         else:
-            _prepare_paper_transformer(child)
+            _prepare_paper_transformer(child, normalization_backend)
     if isinstance(module, MultiHeadAttention):
         module.use_sdpa = True
         module.qk_normalization = "rmsnorm"
+        module.normalization_backend = normalization_backend
 
 
 class EEGXReconstruction(nn.Module):
@@ -153,6 +168,7 @@ class EEGXReconstruction(nn.Module):
         import copy
         from pretrain.channel_identity import load_channel_vocabulary
         from pretrain.models.dictionary import SoftDiCT
+        from pretrain.models.targets import HydraPatchTarget
         from pretrain.objectives import validate_objective
 
         width, depth, heads = config["width"], config["depth"], config.get("heads", 8)
@@ -160,7 +176,8 @@ class EEGXReconstruction(nn.Module):
         if self.input_size < 32 or self.input_size % 32:
             raise ValueError("Input duration must contain complete patches")
         dropout = config.get("dropout", 0.1)
-        self.encoder = EEGXEncoder(width, depth, heads, dropout)
+        normalization_backend = config.get("normalization_backend", "torch")
+        self.encoder = EEGXEncoder(width, depth, heads, dropout, normalization_backend=normalization_backend)
         self.mask_token = nn.Parameter(torch.empty(width))
         nn.init.normal_(self.mask_token, std=0.02)
         self.Predictor = Predictor(width, heads, width * 4, True, 1)
@@ -173,13 +190,22 @@ class EEGXReconstruction(nn.Module):
                 "dropout": dropout,
             }
         )
-        _prepare_paper_transformer(self.Predictor)
-        _prepare_paper_transformer(self.Decoder)
+        _prepare_paper_transformer(self.Predictor, normalization_backend)
+        _prepare_paper_transformer(self.Decoder, normalization_backend)
         self.reconstruction_head = nn.Linear(width, 32)
         objective = config.get("objective")
         validate_objective(objective)
         self.hydra_weight = objective["weight"] if objective else 0.0
-        self.hydra = None if objective is None else SoftDiCT(objective)
+        target_objective = objective is not None and objective["name"] == "raw_hydra_patch_target_v1"
+        if target_objective and self.input_size % objective["patch_size"]:
+            raise ValueError("Input duration must contain complete HYDRA target regions")
+        self.hydra = (
+            None
+            if objective is None or target_objective
+            else SoftDiCT(objective, backend=config.get("dictionary_backend", "torch"))
+        )
+        self.hydra_target = HydraPatchTarget(width, objective) if target_objective else None
+        self.auxiliary_metric = "train/hydra_target" if target_objective else "train/soft_dict"
         self.contract = {
             "name": "eegx_hybrid_reconstruction_v2",
             "width": width,
@@ -209,13 +235,18 @@ class EEGXReconstruction(nn.Module):
             "attention": "flash_else_sdpa_math",
             "objective": copy.deepcopy(objective),
             "raw_loss": "masked_patch_mse",
-            "hydra_loss": "full_reconstruction_soft_winner_counts_mse",
+            "hydra_loss": (
+                "masked_channelwise_hydra_patch_target_mse_v1"
+                if target_objective else "full_reconstruction_soft_winner_counts_mse"
+            ),
             "reconstruction_target": "same_processed_input",
             "window_normalization": "none",
             "mask_ratio": 0.75,
             "mask_version": "paper_identity_mix31_v1",
             "vocabulary_sha256": load_channel_vocabulary().fingerprint,
         }
+        if normalization_backend != "torch":
+            self.contract["normalization_backend"] = normalization_backend
 
     def get_extra_state(self):
         import copy
@@ -239,7 +270,7 @@ class EEGXReconstruction(nn.Module):
         total = sum(p.numel() for p in self.parameters())
         return {"encoder": encoder, "decoder_adapter": total - encoder, "total": total}
 
-    def predict_masked(self, eeg, channel_ids, *, mask, **kwargs):
+    def decode_masked(self, eeg, channel_ids, *, mask):
         if eeg.shape[-1] != self.input_size:
             raise ValueError("Pretraining duration differs from checkpoint contract")
         tokens, positions = self.encoder.tokenize(eeg, channel_ids)
@@ -260,13 +291,18 @@ class EEGXReconstruction(nn.Module):
             1, order.argsort(1)[..., None].expand(-1, -1, self.encoder.embed_dim)
         )
         reconstruction = self.Decoder(decoded + positions)
-        return self.reconstruction_head(reconstruction), mask
+        return reconstruction
+
+    def predict_masked(self, eeg, channel_ids, *, mask, **kwargs):
+        decoded = self.decode_masked(eeg, channel_ids, mask=mask)
+        return self.reconstruction_head(decoded), mask
 
     def patch_errors(self, eeg, prediction):
         return (prediction.float() - self.encoder.patchify(eeg).float()).square().mean(-1)
 
     def forward(self, eeg, channel_ids, *, mask):
-        prediction, mask = self.predict_masked(eeg, channel_ids, mask=mask)
+        decoded = self.decode_masked(eeg, channel_ids, mask=mask)
+        prediction = self.reconstruction_head(decoded)
         raw = (self.patch_errors(eeg, prediction) * mask).sum() / mask.sum()
         hydra = raw.new_zeros(())
         if self.hydra is not None:
@@ -278,6 +314,8 @@ class EEGXReconstruction(nn.Module):
             with torch.no_grad():
                 target = self.hydra(eeg.float().reshape(batch * channels, 1, samples))
             hydra = F.mse_loss(self.hydra(reconstruction.float()), target)
+        elif self.hydra_target is not None:
+            hydra = self.hydra_target(eeg, decoded, mask)
         return {
             "loss": raw + self.hydra_weight * hydra,
             "mae_loss": raw.detach(),

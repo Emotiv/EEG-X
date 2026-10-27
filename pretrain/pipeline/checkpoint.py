@@ -13,7 +13,7 @@ import torch
 
 from pretrain.channel_identity import sha256_file
 from pretrain.rng import capture_rng_state
-from pretrain.compute import compute_policy
+from pretrain.compute import compute_policy, effective_compute_policy
 from pretrain.metadata import fingerprint
 
 
@@ -34,12 +34,18 @@ def software_contract():
         for path in sorted((root / "pretrain").rglob("*.py"))
     }
     sources["Main.py"] = sha256_file(root / "Main.py")
-    from importlib.metadata import version
+    from importlib.metadata import version, PackageNotFoundError
+
+    try:
+        triton_version = version("triton")
+    except PackageNotFoundError:
+        triton_version = None
 
     return {
         "source": fingerprint(sources),
         "sources": sources,
         "torch": str(torch.__version__),
+        "triton": triton_version,
         "python": sys.version,
         "uv_lock": sha256_file(root / "uv.lock"),
         "specification": sha256_file(root / "docs" / "spec.md"),
@@ -50,6 +56,12 @@ def software_contract():
 def source_revision():
     """Record Git provenance without making commit labels resume requirements."""
     root = Path(__file__).resolve().parents[2]
+    frozen = root / "source-revision.json"
+    if frozen.is_file():
+        saved = json.loads(frozen.read_text())
+        if saved["software_contract"] != software_contract():
+            raise ValueError("Frozen source revision does not match the current software contract")
+        return {"commit": saved["commit"], "dirty": saved["dirty"]}
     try:
         revision = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -110,11 +122,7 @@ def contract(config, dataset, *, device="cpu"):
     }
     execution["requested_compute"] = compute_policy(config)
     execution["deterministic_algorithms"] = config.get("deterministic", True)
-    execution["effective_compute"] = (
-        compute_policy(config)
-        if resolved.type == "cuda"
-        else {"matmul": "ieee", "convolution": "ieee", "cudnn_benchmark": False}
-    )
+    execution["effective_compute"] = effective_compute_policy(config, resolved)
     if resolved.type == "cuda":
         execution["gpu"] = torch.cuda.get_device_name(resolved)
         execution["capability"] = list(torch.cuda.get_device_capability(resolved))

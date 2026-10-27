@@ -22,8 +22,10 @@ class Budget:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "budget.json"
-        self.limit = float(gpu_hours) * 3600
-        if not math.isfinite(self.limit) or self.limit <= 0 or self.limit > 72 * 3600:
+        self.limit = None if gpu_hours is None else float(gpu_hours) * 3600
+        if self.limit is not None and (
+            not math.isfinite(self.limit) or self.limit <= 0 or self.limit > 72 * 3600
+        ):
             raise ValueError("Study budget must be positive and cannot exceed the accepted cap")
         self.setup_seconds = float(setup_seconds)
         if not math.isfinite(self.setup_seconds) or self.setup_seconds < 0:
@@ -36,6 +38,14 @@ class Budget:
         self.token = uuid.uuid4().hex
         self.started = None
         self.stop_requested = False
+
+    @classmethod
+    def from_ledger(cls, root, **kwargs):
+        """Use the recorded limit; an explicit null limit meters without a time cap."""
+        state = json.loads((Path(root) / "budget.json").read_text())
+        seconds = state["limit_seconds"]
+        hours = None if seconds is None else seconds / 3600
+        return cls(root, gpu_hours=hours, **kwargs)
 
     @contextlib.contextmanager
     def _locked(self):
@@ -132,7 +142,7 @@ class Budget:
             if len(leases) >= self.max_concurrent:
                 raise BlockingIOError("The shared GPU concurrency limit is occupied")
             self.used = state["used_seconds"]
-            if self.used >= self.limit:
+            if self.limit is not None and self.used >= self.limit:
                 raise BudgetStop("The shared GPU-hour budget is exhausted")
             self.started = time.perf_counter()
             leases[self.token] = {
@@ -158,7 +168,7 @@ class Budget:
     def check(self):
         if self.started is None:
             raise RuntimeError("GPU work requires an active budget lease")
-        if self.stop_requested or self.elapsed >= self.limit:
+        if self.stop_requested or (self.limit is not None and self.elapsed >= self.limit):
             raise BudgetStop("Stop requested or shared GPU-hour budget reached")
 
     def flush(self, *, active=True):

@@ -75,6 +75,7 @@ class Tracker:
         self.optimizer_name = optimizer_name
         self.epoch = None
         self.global_step = 0
+        self._final_test_logged = False
 
     def log(self, values):
         self.epoch = values.get("epoch", self.epoch)
@@ -88,6 +89,18 @@ class Tracker:
             if self.epoch is not None:
                 progress["epoch"] = self.epoch
             self.run.log(progress)
+
+    def final_test(self, scores):
+        """Publish one final score event for automatic charts and summary aggregation."""
+        if self._final_test_logged:
+            raise RuntimeError("Final test scores have already been logged for this run")
+        values = metric_names({f"test/{key}": value for key, value in scores.items()})
+        self.run.summary.update(values)
+        progress = {"trainer/global_step": self.global_step}
+        if self.epoch is not None:
+            progress["epoch"] = self.epoch
+        self.log({**progress, **values})
+        self._final_test_logged = True
 
     def parameters(self, model, *, classifier_parameters=0):
         values = {

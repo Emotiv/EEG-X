@@ -34,3 +34,9 @@ wandb:
 purpose: paper
 shared_gpu: true
 concurrent_gpu_runs: 4
+normalization_backend: triton
+compute:
+  matmul: tf32
+  convolution: ieee
+  cudnn_benchmark: false
+  fill_uninitialized_memory: false

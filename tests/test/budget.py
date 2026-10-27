@@ -127,3 +127,35 @@ def test_four_real_processes_share_ledger_and_recover_a_crashed_owner(tmp_path):
             if process.is_alive():
                 process.terminate()
             process.join(timeout=20)
+
+
+def test_explicit_uncapped_ledger_keeps_accounting_and_safe_stop(tmp_path, monkeypatch):
+    clock = [10.0]
+    monkeypatch.setattr("pretrain.pipeline.budget.time.perf_counter", lambda: clock[0])
+    Budget(tmp_path, gpu_hours=None).initialize()
+    budget = Budget.from_ledger(tmp_path)
+    with budget.stop_on_signals(), budget.lease():
+        clock[0] += 100 * 3600
+        budget.check()
+        budget.flush()
+        budget.stop_requested = True
+        with pytest.raises(BudgetStop):
+            budget.check()
+    state = json.loads((tmp_path / "budget.json").read_text())
+    assert state["limit_seconds"] is None
+    assert state["used_seconds"] == 100 * 3600
+    assert not state["active"]
+    with pytest.raises(ValueError, match="extension"):
+        Budget(tmp_path).initialize()
+
+
+def test_from_ledger_preserves_exhausted_old_cap(tmp_path):
+    Budget(tmp_path).initialize()
+    path = tmp_path / "budget.json"
+    state = json.loads(path.read_text())
+    state["used_seconds"] = state["limit_seconds"] + 1
+    path.write_text(json.dumps(state))
+    with pytest.raises(BudgetStop):
+        with Budget.from_ledger(tmp_path).lease():
+            pass
+    assert json.loads(path.read_text())["limit_seconds"] == 72 * 3600

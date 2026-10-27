@@ -23,7 +23,7 @@ from pretrain.pipeline.checkpoint import (
     stream_seed,
     write_history,
 )
-from pretrain.pipeline.data import Windows, batches, chunks, evaluation_batches, to_device
+from pretrain.pipeline.data import Windows, batches, chunks, to_device
 from pretrain.pipeline.metrics import LossTotals
 from pretrain.models.factory import attention_backends, create_model, masks, resolve_model_config
 from pretrain.metadata import atomic_json
@@ -151,27 +151,9 @@ def schedule(
 
 
 def validation_loss(model, view, config, device, budget):
-    numerator, count = 0.0, 0
-    model.eval()
-    loader = evaluation_batches(view, config, device)
-    with torch.inference_mode():
-        for batch in loader:
-            budget.check()
-            mask = masks(
-                batch["window_id"],
-                batch["channel_ids"],
-                samples=config["input_samples"],
-                seed=stream_seed(config["seed"], "validation_mask"),
-            ).to(device)
-            eeg, ids = batch["eeg"].to(device), batch["channel_ids"].to(device)
-            with context(device, config["precision"]):
-                prediction, mask = model.predict_masked(eeg, ids, mask=mask)
-                errors = model.patch_errors(eeg, prediction)
-            numerator += float((errors * mask).sum())
-            count += int(mask.sum())
-    if not count:
-        raise ValueError("Validation contains no masked patches")
-    return numerator / count
+    from pretrain.pipeline.validation import measure
+
+    return measure(model, view, config, device, budget)["raw_mse"]
 
 
 def run(config, dataset, output, *, device="cpu", budget=None, resume=None, tracker=None):
@@ -345,7 +327,7 @@ def run(config, dataset, output, *, device="cpu", budget=None, resume=None, trac
                                 "trainer/global_step": state["global_step"],
                                 "train/loss_step": loss_sum / total,
                                 "train/raw_mse": mae_sum / total,
-                                "train/soft_dict": hydra_sum / total,
+                                model.auxiliary_metric: hydra_sum / total,
                                 "train/lr": rate,
                                 "train/grad_norm": float(norm),
                             }
