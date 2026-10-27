@@ -1,0 +1,1605 @@
+{
+  "preparation_revision": "157dff5d133c259c1cdef19ed2d48832e3880355",
+  "protocol": "original_catalog_eegx2_v1",
+  "verification": {
+    "passed": 178,
+    "skipped": 3,
+    "skip_reason": "CUDA-only checks",
+    "elapsed_seconds": 172.21,
+    "static_checks": "passed",
+    "standards_fixed": 1,
+    "standards_remaining": 0,
+    "spec_fixed": 5,
+    "spec_remaining": 0,
+    "all_eight_payload_source_and_group_audits": "passed",
+    "clean_worker_shutdown": "passed"
+  },
+  "datasets": [
+    {
+      "dataset": "dreamer-arousal.h5",
+      "task": "dreamer_arousal",
+      "status": "ready",
+      "release_id": "199ea460a5ab5a96b27ba12e4d079a3b5f136fa066c89c996e792937b9bbe978",
+      "shape": [
+        170246,
+        14,
+        256
+      ],
+      "subjects": 23,
+      "independent_subject_groups": 23,
+      "records": 414,
+      "reference_comparison": {
+        "actual_class_counts": [
+          88611,
+          81635
+        ],
+        "expected_class_counts": [
+          88611,
+          81635
+        ],
+        "status": "matched"
+      },
+      "signal_digest": "5416e16f1efb2b6e58cfb9159f6c7b2befb449109e2fce705ac433eb0122a74b",
+      "split_banks": {
+        "subject_holdout/241": "a35c5d35a99df6be62fc509a079f686e14ba520ce90653882ad56e4c26d50f3a",
+        "subject_holdout/242": "8e7170fe0dbb91ba44a327cd9c0472060ae008878370e7cec44e09c40a863702",
+        "subject_holdout/243": "05bcfb3aa7ab8571b0bb26cc2d6b3725d6ece90cf968f1129c25130201e80d1f",
+        "subject_holdout/244": "d2e1def3cf359bfeff67ea3fdd21151940476e30aa2a18b23defd654530ee9a4",
+        "subject_holdout/245": "489cb596f147d11c6afac81db4d6291cf3bd809f990117b47dc99d4d5e269f3d"
+      },
+      "split_counts": {
+        "subject_holdout/241": {
+          "train": {
+            "subjects": 16,
+            "windows": 118432
+          },
+          "validation": {
+            "subjects": 2,
+            "windows": 14804
+          },
+          "test": {
+            "subjects": 5,
+            "windows": 37010
+          }
+        },
+        "subject_holdout/242": {
+          "train": {
+            "subjects": 16,
+            "windows": 118432
+          },
+          "validation": {
+            "subjects": 2,
+            "windows": 14804
+          },
+          "test": {
+            "subjects": 5,
+            "windows": 37010
+          }
+        },
+        "subject_holdout/243": {
+          "train": {
+            "subjects": 16,
+            "windows": 118432
+          },
+          "validation": {
+            "subjects": 2,
+            "windows": 14804
+          },
+          "test": {
+            "subjects": 5,
+            "windows": 37010
+          }
+        },
+        "subject_holdout/244": {
+          "train": {
+            "subjects": 16,
+            "windows": 118432
+          },
+          "validation": {
+            "subjects": 2,
+            "windows": 14804
+          },
+          "test": {
+            "subjects": 5,
+            "windows": 37010
+          }
+        },
+        "subject_holdout/245": {
+          "train": {
+            "subjects": 16,
+            "windows": 118432
+          },
+          "validation": {
+            "subjects": 2,
+            "windows": 14804
+          },
+          "test": {
+            "subjects": 5,
+            "windows": 37010
+          }
+        }
+      },
+      "source_digests_checked": 1,
+      "repeated_signal_rows": 0,
+      "classes": {
+        "0": "low_arousal",
+        "1": "high_arousal"
+      },
+      "class_counts": {
+        "0": 88611,
+        "1": 81635
+      },
+      "window_seconds": 2.0,
+      "reference_lineage": {
+        "artifact": null,
+        "artifact_sha256": null,
+        "original_partitions": null,
+        "fingerprint": null
+      },
+      "preprocessing": {
+        "bandpass": [
+          0.5,
+          45.0
+        ],
+        "clip": 15.0,
+        "ddof": 0,
+        "filter_design": "firwin",
+        "filter_length": "auto",
+        "filter_method": "fir",
+        "filter_phase": "zero",
+        "filter_transition": "auto",
+        "filter_window": "hamming",
+        "ica": false,
+        "mne": "1.13.2",
+        "name": "eegx2_quantplus_v1",
+        "normalization": "recording_channel_standard_scaler",
+        "notch": null,
+        "output_dtype": "float32",
+        "padding": "reflect_limited",
+        "rasr": false,
+        "reference": "native",
+        "resample_method": "fft",
+        "resample_npad": "auto",
+        "resample_window": "auto",
+        "sample_rate": 128,
+        "scaler_with_mean": true,
+        "scaler_with_std": true,
+        "scikit_learn": "1.9.1"
+      },
+      "sampling": {
+        "class_counts": [
+          88611,
+          81635
+        ],
+        "duplicates": "retained_with_grouped_subject_splits",
+        "identity": "record_crop_label_occurrence_v1",
+        "name": "original_catalog_eegx2_v1",
+        "overlap": "preserved",
+        "pilot": false,
+        "stride_samples": 64
+      },
+      "checks": "payload/source hashes, source replay, grouped splits, worker identity, CPU gradients passed",
+      "worker_check": {
+        "workers": [
+          0,
+          2
+        ],
+        "fully_drained_windows": 8,
+        "status": "passed"
+      }
+    },
+    {
+      "dataset": "stew.h5",
+      "task": "stew",
+      "status": "ready",
+      "release_id": "d8c17caceb5cd67c600bddd1276cbd57dd9fcba63e4d4dcfaa1b96675d80170d",
+      "shape": [
+        56928,
+        14,
+        256
+      ],
+      "subjects": 48,
+      "independent_subject_groups": 48,
+      "records": 96,
+      "reference_comparison": {
+        "actual_class_counts": [
+          28464,
+          28464
+        ],
+        "expected_class_counts": [
+          28464,
+          28464
+        ],
+        "status": "matched"
+      },
+      "signal_digest": "c03bb6ef957219f93f04b3e5ddcff382ea3c359c8d9df9faa8ad5ab98f422eab",
+      "split_banks": {
+        "subject_holdout/241": "5411f56c55c85b871e7ac1ff327c04aa15ec1e7030d2580c489673642965bb55",
+        "subject_holdout/242": "7c63597bf49ccd97f80bb9d61b42ea50e7c50121f7015775ec273fdc47b2fe10",
+        "subject_holdout/243": "5802e0d358374838790be28209b94ae9884565459483536d2cce4f4b9a8725e0",
+        "subject_holdout/244": "7144da5ee27968e64fa9a1e775922c2c404cdb646f6f71fce164cd612d25d9ad",
+        "subject_holdout/245": "9ecf8dc230898c81b020ac48f198da973b2affd6c4cde103bddbfcf1d56b4715"
+      },
+      "split_counts": {
+        "subject_holdout/241": {
+          "train": {
+            "subjects": 33,
+            "windows": 39138
+          },
+          "validation": {
+            "subjects": 5,
+            "windows": 5930
+          },
+          "test": {
+            "subjects": 10,
+            "windows": 11860
+          }
+        },
+        "subject_holdout/242": {
+          "train": {
+            "subjects": 33,
+            "windows": 39138
+          },
+          "validation": {
+            "subjects": 5,
+            "windows": 5930
+          },
+          "test": {
+            "subjects": 10,
+            "windows": 11860
+          }
+        },
+        "subject_holdout/243": {
+          "train": {
+            "subjects": 33,
+            "windows": 39138
+          },
+          "validation": {
+            "subjects": 5,
+            "windows": 5930
+          },
+          "test": {
+            "subjects": 10,
+            "windows": 11860
+          }
+        },
+        "subject_holdout/244": {
+          "train": {
+            "subjects": 33,
+            "windows": 39138
+          },
+          "validation": {
+            "subjects": 5,
+            "windows": 5930
+          },
+          "test": {
+            "subjects": 10,
+            "windows": 11860
+          }
+        },
+        "subject_holdout/245": {
+          "train": {
+            "subjects": 33,
+            "windows": 39138
+          },
+          "validation": {
+            "subjects": 5,
+            "windows": 5930
+          },
+          "test": {
+            "subjects": 10,
+            "windows": 11860
+          }
+        }
+      },
+      "source_digests_checked": 96,
+      "repeated_signal_rows": 0,
+      "classes": {
+        "0": "low_workload",
+        "1": "high_workload"
+      },
+      "class_counts": {
+        "0": 28464,
+        "1": 28464
+      },
+      "window_seconds": 2.0,
+      "reference_lineage": {
+        "artifact": null,
+        "artifact_sha256": null,
+        "original_partitions": null,
+        "fingerprint": null
+      },
+      "preprocessing": {
+        "bandpass": [
+          0.5,
+          45.0
+        ],
+        "clip": 15.0,
+        "ddof": 0,
+        "filter_design": "firwin",
+        "filter_length": "auto",
+        "filter_method": "fir",
+        "filter_phase": "zero",
+        "filter_transition": "auto",
+        "filter_window": "hamming",
+        "ica": false,
+        "mne": "1.13.2",
+        "name": "eegx2_quantplus_v1",
+        "normalization": "recording_channel_standard_scaler",
+        "notch": null,
+        "output_dtype": "float32",
+        "padding": "reflect_limited",
+        "rasr": false,
+        "reference": "native",
+        "resample_method": "fft",
+        "resample_npad": "auto",
+        "resample_window": "auto",
+        "sample_rate": 128,
+        "scaler_with_mean": true,
+        "scaler_with_std": true,
+        "scikit_learn": "1.9.1"
+      },
+      "sampling": {
+        "class_counts": [
+          28464,
+          28464
+        ],
+        "duplicates": "retained_with_grouped_subject_splits",
+        "identity": "record_crop_label_occurrence_v1",
+        "name": "original_catalog_eegx2_v1",
+        "overlap": "preserved",
+        "pilot": false,
+        "stride_samples": 32
+      },
+      "checks": "payload/source hashes, source replay, grouped splits, worker identity, CPU gradients passed",
+      "worker_check": {
+        "workers": [
+          0,
+          2
+        ],
+        "fully_drained_windows": 8,
+        "status": "passed"
+      }
+    },
+    {
+      "dataset": "tuab.h5",
+      "task": "tuab",
+      "status": "ready",
+      "release_id": "6a593161b82fb44a1251d8070ff6efb5e340a2e0fbd67e8fdcb9a59367dd57c1",
+      "shape": [
+        409455,
+        19,
+        1280
+      ],
+      "subjects": 2329,
+      "independent_subject_groups": 2327,
+      "records": 2993,
+      "reference_comparison": {
+        "actual_class_counts": [
+          203616,
+          205839
+        ],
+        "expected_class_counts": [
+          203616,
+          205839
+        ],
+        "status": "matched"
+      },
+      "signal_digest": "96eefb1b5e6a109d765f6ae147d7b89f0df0cce58c70df2ac823f6c6e56e4bc3",
+      "split_banks": {
+        "subject_holdout/241": "63dbae4039acb9e9aea5a5a7fae6f97823dd2535857207e7bc827b9efd899c7d",
+        "subject_holdout/242": "448d5ae66835f041d55d2e0af093099acf65989694efe0f46a6ca291e707cf2e",
+        "subject_holdout/243": "3dc6b5577fc9fa46cde4e5eb75676c36edc1873099361b15bb5929329ebe5479",
+        "subject_holdout/244": "e4a48b4c196b589026431df7fdf9cf39f367d3c7d28a512bb1e85e8b3d418e05",
+        "subject_holdout/245": "9572dc46e5bb5682501c4682eaf6444109e02cddb626a29a69c4ce1c6de8752f",
+        "tuab_source/241": "493883588997a7b86d470b6ccf999599bbf25d6e31f0b9f774c320773433dff0"
+      },
+      "split_counts": {
+        "subject_holdout/241": {
+          "train": {
+            "subjects": 1630,
+            "windows": 291064
+          },
+          "validation": {
+            "subjects": 233,
+            "windows": 40375
+          },
+          "test": {
+            "subjects": 466,
+            "windows": 78016
+          }
+        },
+        "subject_holdout/242": {
+          "train": {
+            "subjects": 1630,
+            "windows": 284518
+          },
+          "validation": {
+            "subjects": 233,
+            "windows": 38960
+          },
+          "test": {
+            "subjects": 466,
+            "windows": 85977
+          }
+        },
+        "subject_holdout/243": {
+          "train": {
+            "subjects": 1630,
+            "windows": 283875
+          },
+          "validation": {
+            "subjects": 233,
+            "windows": 43215
+          },
+          "test": {
+            "subjects": 466,
+            "windows": 82365
+          }
+        },
+        "subject_holdout/244": {
+          "train": {
+            "subjects": 1630,
+            "windows": 290100
+          },
+          "validation": {
+            "subjects": 233,
+            "windows": 41702
+          },
+          "test": {
+            "subjects": 466,
+            "windows": 77653
+          }
+        },
+        "subject_holdout/245": {
+          "train": {
+            "subjects": 1630,
+            "windows": 283523
+          },
+          "validation": {
+            "subjects": 233,
+            "windows": 43102
+          },
+          "test": {
+            "subjects": 466,
+            "windows": 82830
+          }
+        },
+        "tuab_source/241": {
+          "train": {
+            "subjects": 1863,
+            "windows": 331439
+          },
+          "validation": {
+            "subjects": 466,
+            "windows": 78016
+          },
+          "test": {
+            "subjects": 0,
+            "windows": 0
+          }
+        }
+      },
+      "source_digests_checked": 2993,
+      "repeated_signal_rows": 271,
+      "classes": {
+        "0": "normal",
+        "1": "abnormal"
+      },
+      "class_counts": {
+        "0": 203616,
+        "1": 205839
+      },
+      "window_seconds": 10.0,
+      "reference_lineage": {
+        "artifact": null,
+        "artifact_sha256": null,
+        "original_partitions": null,
+        "fingerprint": null
+      },
+      "preprocessing": {
+        "bandpass": [
+          0.5,
+          45.0
+        ],
+        "clip": 15.0,
+        "ddof": 0,
+        "filter_design": "firwin",
+        "filter_length": "auto",
+        "filter_method": "fir",
+        "filter_phase": "zero",
+        "filter_transition": "auto",
+        "filter_window": "hamming",
+        "ica": false,
+        "mne": "1.13.2",
+        "name": "eegx2_quantplus_v1",
+        "normalization": "recording_channel_standard_scaler",
+        "notch": null,
+        "output_dtype": "float32",
+        "padding": "reflect_limited",
+        "rasr": false,
+        "reference": "native",
+        "resample_method": "fft",
+        "resample_npad": "auto",
+        "resample_window": "auto",
+        "sample_rate": 128,
+        "scaler_with_mean": true,
+        "scaler_with_std": true,
+        "scikit_learn": "1.9.1"
+      },
+      "sampling": {
+        "class_counts": [
+          203616,
+          205839
+        ],
+        "duplicates": "retained_with_grouped_subject_splits",
+        "identity": "record_crop_label_occurrence_v1",
+        "name": "original_catalog_eegx2_v1",
+        "overlap": "preserved",
+        "pilot": false,
+        "stride_samples": 1280
+      },
+      "checks": "payload/source hashes, source replay, grouped splits, worker identity, CPU gradients passed",
+      "worker_check": {
+        "workers": [
+          0,
+          2
+        ],
+        "fully_drained_windows": 8,
+        "status": "passed"
+      }
+    },
+    {
+      "dataset": "tuev-binary.h5",
+      "task": "tuev_binary",
+      "status": "ready",
+      "release_id": "c3be6d6ed3a71da2d8802f1286aa26d4861c1486fa064f057b7504617f8bed2e",
+      "shape": [
+        98684,
+        19,
+        256
+      ],
+      "subjects": 346,
+      "independent_subject_groups": 313,
+      "records": 472,
+      "reference_comparison": {
+        "actual_class_counts": [
+          73372,
+          25312
+        ],
+        "expected_class_counts": [
+          73372,
+          25312
+        ],
+        "status": "matched"
+      },
+      "signal_digest": "4b09d66a26ccdbcf2a5be6efdf7f72283abf36f5ab0c91ec762aa0e82cbac887",
+      "split_banks": {
+        "subject_holdout/241": "48898cd6f6a61bcd1322865bd78954ea7b8c1ea565cfeccb89c244cc52850509",
+        "subject_holdout/242": "bc60c23f9c3f0cb65b374b94796b9a77afe54dc263ef424dc29a5f2c80016859",
+        "subject_holdout/243": "b228e51a67be52d120ec21cfb8b14f38ee5be5e12d595a898435f2dcff9ef646",
+        "subject_holdout/244": "68d4f8edf56f502e5dec89ce62c4ab54169829a372987de35919c39fe5df9f92",
+        "subject_holdout/245": "0811deb40063b7212a7248a1c9509849b2b67f67a9f7cc693e9706b68d60c4ea"
+      },
+      "split_counts": {
+        "subject_holdout/241": {
+          "train": {
+            "subjects": 242,
+            "windows": 67738
+          },
+          "validation": {
+            "subjects": 35,
+            "windows": 10716
+          },
+          "test": {
+            "subjects": 69,
+            "windows": 20230
+          }
+        },
+        "subject_holdout/242": {
+          "train": {
+            "subjects": 242,
+            "windows": 62961
+          },
+          "validation": {
+            "subjects": 35,
+            "windows": 7393
+          },
+          "test": {
+            "subjects": 69,
+            "windows": 28330
+          }
+        },
+        "subject_holdout/243": {
+          "train": {
+            "subjects": 242,
+            "windows": 70817
+          },
+          "validation": {
+            "subjects": 35,
+            "windows": 9361
+          },
+          "test": {
+            "subjects": 69,
+            "windows": 18506
+          }
+        },
+        "subject_holdout/244": {
+          "train": {
+            "subjects": 243,
+            "windows": 70641
+          },
+          "validation": {
+            "subjects": 35,
+            "windows": 9930
+          },
+          "test": {
+            "subjects": 68,
+            "windows": 18113
+          }
+        },
+        "subject_holdout/245": {
+          "train": {
+            "subjects": 242,
+            "windows": 67234
+          },
+          "validation": {
+            "subjects": 35,
+            "windows": 10139
+          },
+          "test": {
+            "subjects": 69,
+            "windows": 21311
+          }
+        }
+      },
+      "source_digests_checked": 924,
+      "repeated_signal_rows": 88142,
+      "classes": {
+        "0": "background",
+        "1": "epileptiform"
+      },
+      "class_counts": {
+        "0": 73372,
+        "1": 25312
+      },
+      "window_seconds": 2.0,
+      "reference_lineage": {
+        "artifact": null,
+        "artifact_sha256": null,
+        "original_partitions": null,
+        "fingerprint": null
+      },
+      "preprocessing": {
+        "bandpass": [
+          0.5,
+          45.0
+        ],
+        "clip": 15.0,
+        "ddof": 0,
+        "filter_design": "firwin",
+        "filter_length": "auto",
+        "filter_method": "fir",
+        "filter_phase": "zero",
+        "filter_transition": "auto",
+        "filter_window": "hamming",
+        "ica": false,
+        "mne": "1.13.2",
+        "name": "eegx2_quantplus_v1",
+        "normalization": "recording_channel_standard_scaler",
+        "notch": null,
+        "output_dtype": "float32",
+        "padding": "reflect_limited",
+        "rasr": false,
+        "reference": "native",
+        "resample_method": "fft",
+        "resample_npad": "auto",
+        "resample_window": "auto",
+        "sample_rate": 128,
+        "scaler_with_mean": true,
+        "scaler_with_std": true,
+        "scikit_learn": "1.9.1"
+      },
+      "sampling": {
+        "class_counts": [
+          73372,
+          25312
+        ],
+        "duplicates": "retained_with_grouped_subject_splits",
+        "identity": "record_crop_label_occurrence_v1",
+        "name": "original_catalog_eegx2_v1",
+        "overlap": "preserved",
+        "pilot": false,
+        "stride_samples": null
+      },
+      "checks": "payload/source hashes, source replay, grouped splits, worker identity, CPU gradients passed",
+      "worker_check": {
+        "workers": [
+          0,
+          2
+        ],
+        "fully_drained_windows": 8,
+        "status": "passed"
+      }
+    },
+    {
+      "dataset": "crowdsourced.h5",
+      "task": "crowdsourced",
+      "status": "ready",
+      "release_id": "f49af4512d15b1511094d0601315dd433f53884093f7415a694f9d7f319053ed",
+      "shape": [
+        12305,
+        14,
+        256
+      ],
+      "subjects": 13,
+      "independent_subject_groups": 13,
+      "records": 13,
+      "reference_comparison": {
+        "actual_class_counts": [
+          6153,
+          6152
+        ],
+        "expected_class_counts": [
+          6679,
+          6684
+        ],
+        "status": "documented_exception"
+      },
+      "signal_digest": "bfac22b9fe8dce416d31cd8dd83b5031132c88f8796ebaf1a440cdacddce44a9",
+      "split_banks": {
+        "subject_holdout/241": "d9f2be21741a5c0518f05f08641f9ea36459765e1ff8006822fcf6263bd45812",
+        "subject_holdout/242": "2930da21ed16ad193cd0c670c53aee69081731ef83d7f870f792bae819beb6e3",
+        "subject_holdout/243": "036791444ad36f234b1659593eb3933098dfdd16e954b1317935890bfbb579ab",
+        "subject_holdout/244": "02dadc7e4fe5383de0921d6075608f9fe91788ecb0662155c914a9d59b6d57f7",
+        "subject_holdout/245": "39ef931e8a3938e9e75aa5c22c900325dadffd09e3c755b08339fe1d164e6d3a"
+      },
+      "split_counts": {
+        "subject_holdout/241": {
+          "train": {
+            "subjects": 9,
+            "windows": 8521
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 944
+          },
+          "test": {
+            "subjects": 3,
+            "windows": 2840
+          }
+        },
+        "subject_holdout/242": {
+          "train": {
+            "subjects": 9,
+            "windows": 8519
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 948
+          },
+          "test": {
+            "subjects": 3,
+            "windows": 2838
+          }
+        },
+        "subject_holdout/243": {
+          "train": {
+            "subjects": 9,
+            "windows": 8518
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 948
+          },
+          "test": {
+            "subjects": 3,
+            "windows": 2839
+          }
+        },
+        "subject_holdout/244": {
+          "train": {
+            "subjects": 9,
+            "windows": 8519
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 946
+          },
+          "test": {
+            "subjects": 3,
+            "windows": 2840
+          }
+        },
+        "subject_holdout/245": {
+          "train": {
+            "subjects": 9,
+            "windows": 8523
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 946
+          },
+          "test": {
+            "subjects": 3,
+            "windows": 2836
+          }
+        }
+      },
+      "source_digests_checked": 26,
+      "repeated_signal_rows": 0,
+      "classes": {
+        "0": "eyes_closed",
+        "1": "eyes_open"
+      },
+      "class_counts": {
+        "0": 6153,
+        "1": 6152
+      },
+      "window_seconds": 2.0,
+      "reference_lineage": {
+        "artifact": null,
+        "artifact_sha256": null,
+        "original_partitions": null,
+        "fingerprint": null
+      },
+      "preprocessing": {
+        "bandpass": [
+          0.5,
+          45.0
+        ],
+        "clip": 15.0,
+        "ddof": 0,
+        "filter_design": "firwin",
+        "filter_length": "auto",
+        "filter_method": "fir",
+        "filter_phase": "zero",
+        "filter_transition": "auto",
+        "filter_window": "hamming",
+        "ica": false,
+        "mne": "1.13.2",
+        "name": "eegx2_quantplus_v1",
+        "normalization": "recording_channel_standard_scaler",
+        "notch": null,
+        "output_dtype": "float32",
+        "padding": "reflect_limited",
+        "rasr": false,
+        "reference": "native",
+        "resample_method": "fft",
+        "resample_npad": "auto",
+        "resample_window": "auto",
+        "sample_rate": 128,
+        "scaler_with_mean": true,
+        "scaler_with_std": true,
+        "scikit_learn": "1.9.1"
+      },
+      "sampling": {
+        "allow_count_difference": true,
+        "class_counts": [
+          6679,
+          6684
+        ],
+        "duplicates": "retained_with_grouped_subject_splits",
+        "exception": "correct_native_timing_and_preserve_acquisition_and_label_boundaries",
+        "identity": "record_crop_label_occurrence_v1",
+        "name": "original_catalog_eegx2_v1",
+        "overlap": "preserved",
+        "pilot": false,
+        "stride_samples": 32
+      },
+      "checks": "payload/source hashes, source replay, grouped splits, worker identity, CPU gradients passed",
+      "worker_check": {
+        "workers": [
+          0,
+          2
+        ],
+        "fully_drained_windows": 8,
+        "status": "passed"
+      }
+    },
+    {
+      "dataset": "bciciv-2a.h5",
+      "task": "bciciv_2a",
+      "status": "ready",
+      "release_id": "4030bf252e5763c4b6e8e7bf1d2c746cca4b39eaa7643f81aae503cf12b6080c",
+      "shape": [
+        5184,
+        22,
+        256
+      ],
+      "subjects": 9,
+      "independent_subject_groups": 9,
+      "records": 108,
+      "reference_comparison": {
+        "actual_class_counts": [
+          1296,
+          1296,
+          1296,
+          1296
+        ],
+        "expected_class_counts": [
+          1296,
+          1296,
+          1296,
+          1296
+        ],
+        "status": "matched"
+      },
+      "signal_digest": "d1c544c52ebc8b9cbdfc0b9b650a4f520c99e06c5da01a2a632e2278a65253ab",
+      "split_banks": {
+        "subject_holdout/241": "4148e7615eba7c1227b4df5670bf4c291839a793a62baa0555af60c20c1448b2",
+        "subject_holdout/242": "c7d7c3e1e6abb3b1abaeda1b2957f708684629f0cf3ca757b739b1b12986a79c",
+        "subject_holdout/243": "3bb71635989775d2f11f6e33697b0819b99f11e3511bcb3dfe05e100e05011ec",
+        "subject_holdout/244": "a5627f80db96e1f734f66cb000c16285a0ecb0bafe0593db410dd343e7247a87",
+        "subject_holdout/245": "7fef6a6471d35701e488f6e13eebfb361a077d5490b0487b5dda1853ce506ac0"
+      },
+      "split_counts": {
+        "subject_holdout/241": {
+          "train": {
+            "subjects": 6,
+            "windows": 3456
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 576
+          },
+          "test": {
+            "subjects": 2,
+            "windows": 1152
+          }
+        },
+        "subject_holdout/242": {
+          "train": {
+            "subjects": 6,
+            "windows": 3456
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 576
+          },
+          "test": {
+            "subjects": 2,
+            "windows": 1152
+          }
+        },
+        "subject_holdout/243": {
+          "train": {
+            "subjects": 6,
+            "windows": 3456
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 576
+          },
+          "test": {
+            "subjects": 2,
+            "windows": 1152
+          }
+        },
+        "subject_holdout/244": {
+          "train": {
+            "subjects": 6,
+            "windows": 3456
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 576
+          },
+          "test": {
+            "subjects": 2,
+            "windows": 1152
+          }
+        },
+        "subject_holdout/245": {
+          "train": {
+            "subjects": 6,
+            "windows": 3456
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 576
+          },
+          "test": {
+            "subjects": 2,
+            "windows": 1152
+          }
+        }
+      },
+      "source_digests_checked": 18,
+      "repeated_signal_rows": 0,
+      "classes": {
+        "0": "feet",
+        "1": "left_hand",
+        "2": "right_hand",
+        "3": "tongue"
+      },
+      "class_counts": {
+        "0": 1296,
+        "1": 1296,
+        "2": 1296,
+        "3": 1296
+      },
+      "window_seconds": 2.0,
+      "reference_lineage": {
+        "artifact": "BNCI2014_001.npy",
+        "artifact_sha256": "929a52afdbabd7e64d52f3fbf50b68e0e711bf10fbfefe0cdc0ea9fa9c8045dd",
+        "original_partitions": {
+          "X_test": 1728,
+          "X_train": 2880,
+          "X_val": 576
+        },
+        "fingerprint": "af61a20b769900bf16438413ece0a649cb2450443ac72f4ec1ab478660e917ae"
+      },
+      "preprocessing": {
+        "bandpass": [
+          0.5,
+          45.0
+        ],
+        "clip": 15.0,
+        "ddof": 0,
+        "filter_design": "firwin",
+        "filter_length": "auto",
+        "filter_method": "fir",
+        "filter_phase": "zero",
+        "filter_transition": "auto",
+        "filter_window": "hamming",
+        "ica": false,
+        "mne": "1.13.2",
+        "name": "eegx2_quantplus_v1",
+        "normalization": "recording_channel_standard_scaler",
+        "notch": null,
+        "output_dtype": "float32",
+        "padding": "reflect_limited",
+        "rasr": false,
+        "reference": "native",
+        "resample_method": "fft",
+        "resample_npad": "auto",
+        "resample_window": "auto",
+        "sample_rate": 128,
+        "scaler_with_mean": true,
+        "scaler_with_std": true,
+        "scikit_learn": "1.9.1"
+      },
+      "sampling": {
+        "class_counts": [
+          1296,
+          1296,
+          1296,
+          1296
+        ],
+        "duplicates": "retained_with_grouped_subject_splits",
+        "identity": "record_crop_label_occurrence_v1",
+        "name": "original_catalog_eegx2_v1",
+        "overlap": "preserved",
+        "pilot": false,
+        "reference_native_samples": 500,
+        "requires_row_provenance": true,
+        "stride_samples": null
+      },
+      "checks": "payload/source hashes, source replay, grouped splits, worker identity, CPU gradients passed",
+      "worker_check": {
+        "workers": [
+          0,
+          2
+        ],
+        "fully_drained_windows": 8,
+        "status": "passed"
+      }
+    },
+    {
+      "dataset": "kalunga.h5",
+      "task": "kalunga",
+      "status": "ready",
+      "release_id": "6b9199375981d1150346b31f6af63fda808b25ff05c59807ce51d5c268f82ded",
+      "shape": [
+        960,
+        8,
+        256
+      ],
+      "subjects": 12,
+      "independent_subject_groups": 11,
+      "records": 30,
+      "reference_comparison": {
+        "actual_class_counts": [
+          240,
+          240,
+          240,
+          240
+        ],
+        "expected_class_counts": [
+          240,
+          240,
+          240,
+          240
+        ],
+        "status": "matched"
+      },
+      "signal_digest": "699cf185612cbf5b28bbb6060f3a4e0e9b98a73ee9b0e5c466d60d565fb4a899",
+      "split_banks": {
+        "subject_holdout/241": "794d0d77c3856e65e3fcb8ad286d58d46942243755009611695a226b2d2676ec",
+        "subject_holdout/242": "4bec823e5763a45ae0c863702830a60eb59b990abc4b9a8a7b12a891757a30bf",
+        "subject_holdout/243": "5cba82a9447ba28178c7044188ef8c938f5abe8e541af03f8f7ab2bdd303cade",
+        "subject_holdout/244": "61647eec87fa88673fe3cee212ea7efb0bd818307c3de99e6b1250a28999a4ca",
+        "subject_holdout/245": "0f43332d3ef3bf45f6e802e0add166c9304633adbec7c0a2abd4bed3048c3091"
+      },
+      "split_counts": {
+        "subject_holdout/241": {
+          "train": {
+            "subjects": 9,
+            "windows": 704
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 128
+          },
+          "test": {
+            "subjects": 2,
+            "windows": 128
+          }
+        },
+        "subject_holdout/242": {
+          "train": {
+            "subjects": 9,
+            "windows": 768
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 64
+          },
+          "test": {
+            "subjects": 2,
+            "windows": 128
+          }
+        },
+        "subject_holdout/243": {
+          "train": {
+            "subjects": 8,
+            "windows": 672
+          },
+          "validation": {
+            "subjects": 2,
+            "windows": 160
+          },
+          "test": {
+            "subjects": 2,
+            "windows": 128
+          }
+        },
+        "subject_holdout/244": {
+          "train": {
+            "subjects": 9,
+            "windows": 768
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 64
+          },
+          "test": {
+            "subjects": 2,
+            "windows": 128
+          }
+        },
+        "subject_holdout/245": {
+          "train": {
+            "subjects": 9,
+            "windows": 672
+          },
+          "validation": {
+            "subjects": 1,
+            "windows": 64
+          },
+          "test": {
+            "subjects": 2,
+            "windows": 224
+          }
+        }
+      },
+      "source_digests_checked": 30,
+      "repeated_signal_rows": 32,
+      "classes": {
+        "0": "rest",
+        "1": "13_Hz",
+        "2": "21_Hz",
+        "3": "17_Hz"
+      },
+      "class_counts": {
+        "0": 240,
+        "1": 240,
+        "2": 240,
+        "3": 240
+      },
+      "window_seconds": 2.0,
+      "reference_lineage": {
+        "artifact": "Kalunga2016.npy",
+        "artifact_sha256": "590f2b4782f61c1b5984fde75b4f2033d36fe4b73dbbac21746a3070d796b109",
+        "original_partitions": {
+          "X_test": 352,
+          "X_train": 480,
+          "X_val": 128
+        },
+        "fingerprint": "029ca8b4b53943360d3779415f578e7afa42f55f00faf2fb5de4aa6f4d744550"
+      },
+      "preprocessing": {
+        "bandpass": [
+          0.5,
+          45.0
+        ],
+        "clip": 15.0,
+        "ddof": 0,
+        "filter_design": "firwin",
+        "filter_length": "auto",
+        "filter_method": "fir",
+        "filter_phase": "zero",
+        "filter_transition": "auto",
+        "filter_window": "hamming",
+        "ica": false,
+        "mne": "1.13.2",
+        "name": "eegx2_quantplus_v1",
+        "normalization": "recording_channel_standard_scaler",
+        "notch": null,
+        "output_dtype": "float32",
+        "padding": "reflect_limited",
+        "rasr": false,
+        "reference": "native",
+        "resample_method": "fft",
+        "resample_npad": "auto",
+        "resample_window": "auto",
+        "sample_rate": 128,
+        "scaler_with_mean": true,
+        "scaler_with_std": true,
+        "scikit_learn": "1.9.1"
+      },
+      "sampling": {
+        "class_counts": [
+          240,
+          240,
+          240,
+          240
+        ],
+        "duplicates": "retained_with_grouped_subject_splits",
+        "identity": "record_crop_label_occurrence_v1",
+        "name": "original_catalog_eegx2_v1",
+        "overlap": "preserved",
+        "pilot": false,
+        "reference_native_samples": 512,
+        "requires_row_provenance": true,
+        "stride_samples": null
+      },
+      "checks": "payload/source hashes, source replay, grouped splits, worker identity, CPU gradients passed",
+      "worker_check": {
+        "workers": [
+          0,
+          2
+        ],
+        "fully_drained_windows": 8,
+        "status": "passed"
+      }
+    },
+    {
+      "dataset": "physionet-mi.h5",
+      "task": "physionet_mi",
+      "status": "ready",
+      "release_id": "67ec1855d4364ee16949cf34d120e3921cd1ce1f41b871702d87f8c72f06c270",
+      "shape": [
+        19022,
+        64,
+        256
+      ],
+      "subjects": 109,
+      "independent_subject_groups": 109,
+      "records": 654,
+      "reference_comparison": {
+        "actual_class_counts": [
+          2455,
+          2480,
+          2438,
+          2465,
+          9184
+        ],
+        "expected_class_counts": [
+          2455,
+          2480,
+          2438,
+          2465,
+          9184
+        ],
+        "status": "documented_exception"
+      },
+      "signal_digest": "9f769ec42425cd459d75c1a615d328c866a67f99f71caecb9165d0cbfd8c38bc",
+      "split_banks": {
+        "subject_holdout/241": "b0370840d950fea554e46eeb6c41595222596b318585e3b4b99cb0059f7c5030",
+        "subject_holdout/242": "125125aec709b742b8d87283d65fb9f4be09ddb2a4b72d04347c60b174e7b5c0",
+        "subject_holdout/243": "616ca0938a97d3cf894548aecd307a3cd9b528a4e2cf093e38dfd2139770fd08",
+        "subject_holdout/244": "9aff6c38c5b923be3a90a1d69c5d518d7e6042e8c1ba6dc00f18a0a4a5a6a3b1",
+        "subject_holdout/245": "aa59fea2b65fd617a5fe19df497f471017ca8804303daacfbcbfe6bdf6d63a04"
+      },
+      "split_counts": {
+        "subject_holdout/241": {
+          "train": {
+            "subjects": 76,
+            "windows": 13236
+          },
+          "validation": {
+            "subjects": 11,
+            "windows": 1914
+          },
+          "test": {
+            "subjects": 22,
+            "windows": 3872
+          }
+        },
+        "subject_holdout/242": {
+          "train": {
+            "subjects": 76,
+            "windows": 13320
+          },
+          "validation": {
+            "subjects": 11,
+            "windows": 1914
+          },
+          "test": {
+            "subjects": 22,
+            "windows": 3788
+          }
+        },
+        "subject_holdout/243": {
+          "train": {
+            "subjects": 76,
+            "windows": 13280
+          },
+          "validation": {
+            "subjects": 11,
+            "windows": 1914
+          },
+          "test": {
+            "subjects": 22,
+            "windows": 3828
+          }
+        },
+        "subject_holdout/244": {
+          "train": {
+            "subjects": 76,
+            "windows": 13284
+          },
+          "validation": {
+            "subjects": 11,
+            "windows": 1914
+          },
+          "test": {
+            "subjects": 22,
+            "windows": 3824
+          }
+        },
+        "subject_holdout/245": {
+          "train": {
+            "subjects": 76,
+            "windows": 13284
+          },
+          "validation": {
+            "subjects": 11,
+            "windows": 1910
+          },
+          "test": {
+            "subjects": 22,
+            "windows": 3828
+          }
+        }
+      },
+      "source_digests_checked": 654,
+      "repeated_signal_rows": 0,
+      "classes": {
+        "0": "feet",
+        "1": "left_hand",
+        "2": "right_hand",
+        "3": "hands",
+        "4": "rest"
+      },
+      "class_counts": {
+        "0": 2455,
+        "1": 2480,
+        "2": 2438,
+        "3": 2465,
+        "4": 9184
+      },
+      "window_seconds": 2.0,
+      "reference_lineage": {
+        "artifact": "PhysionetMI.npy",
+        "artifact_sha256": "c97af357bbee0f991f45ba4e539a0a80783f8bdc4df93c47ce158345578c5aec",
+        "original_partitions": {
+          "X_test": 4058,
+          "X_train": 11310,
+          "X_val": 3654
+        },
+        "fingerprint": "0883ed4b46d69030a0d6da0c184de05e871f5a1b899a3aa1c68d9a0c0fcdf750"
+      },
+      "preprocessing": {
+        "bandpass": [
+          0.5,
+          45.0
+        ],
+        "clip": 15.0,
+        "ddof": 0,
+        "filter_design": "firwin",
+        "filter_length": "auto",
+        "filter_method": "fir",
+        "filter_phase": "zero",
+        "filter_transition": "auto",
+        "filter_window": "hamming",
+        "ica": false,
+        "mne": "1.13.2",
+        "name": "eegx2_quantplus_v1",
+        "normalization": "recording_channel_standard_scaler",
+        "notch": null,
+        "output_dtype": "float32",
+        "padding": "reflect_limited",
+        "rasr": false,
+        "reference": "native",
+        "resample_method": "fft",
+        "resample_npad": "auto",
+        "resample_window": "auto",
+        "sample_rate": 128,
+        "scaler_with_mean": true,
+        "scaler_with_std": true,
+        "scikit_learn": "1.9.1"
+      },
+      "sampling": {
+        "class_counts": [
+          2455,
+          2480,
+          2438,
+          2465,
+          9184
+        ],
+        "duplicates": "retained_with_grouped_subject_splits",
+        "exception": "harmonize_legacy_320_native_sample_crops_to_true_two_seconds",
+        "identity": "record_crop_label_occurrence_v1",
+        "name": "original_catalog_eegx2_v1",
+        "overlap": "preserved",
+        "pilot": false,
+        "reference_native_samples": 320,
+        "requires_row_provenance": true,
+        "stride_samples": null
+      },
+      "checks": "payload/source hashes, source replay, grouped splits, worker identity, CPU gradients passed",
+      "worker_check": {
+        "workers": [
+          0,
+          2
+        ],
+        "fully_drained_windows": 8,
+        "status": "passed"
+      }
+    }
+  ],
+  "crowdsourced_reconciliation": {
+    "summary": {
+      "old_samples": 13363,
+      "rate_corrected_joined_samples": 12400,
+      "rate_and_label_boundary_samples": 12305,
+      "final_samples": 12305
+    },
+    "old_class_counts": {
+      "1": 6684,
+      "0": 6679
+    },
+    "rows": [
+      {
+        "source": "Alpha Supression_EPOCPLUS_2020_11_10T12_58.csv.gz",
+        "native_rate": 128,
+        "old_samples": 954,
+        "rate_corrected_joined_samples": 954,
+        "rate_and_label_boundary_samples": 946,
+        "final_samples": 946,
+        "continuous_blocks": 2
+      },
+      {
+        "source": "Alpha Supression_EPOCPLUS_2020_11_12T15_07.csv.gz",
+        "native_rate": 128,
+        "old_samples": 955,
+        "rate_corrected_joined_samples": 955,
+        "rate_and_label_boundary_samples": 947,
+        "final_samples": 947,
+        "continuous_blocks": 1
+      },
+      {
+        "source": "Alpha Supression_EPOCPLUS_2021_02_28T14_03.csv.gz",
+        "native_rate": 128,
+        "old_samples": 955,
+        "rate_corrected_joined_samples": 955,
+        "rate_and_label_boundary_samples": 948,
+        "final_samples": 948,
+        "continuous_blocks": 7
+      },
+      {
+        "source": "Alpha Supression_EPOCPLUS_2021_02_28T15_27.csv.gz",
+        "native_rate": 128,
+        "old_samples": 955,
+        "rate_corrected_joined_samples": 955,
+        "rate_and_label_boundary_samples": 948,
+        "final_samples": 948,
+        "continuous_blocks": 1
+      },
+      {
+        "source": "Alpha Supression_EPOCPLUS_2021_03_01T16_57.csv.gz",
+        "native_rate": 256,
+        "old_samples": 1918,
+        "rate_corrected_joined_samples": 955,
+        "rate_and_label_boundary_samples": 948,
+        "final_samples": 948,
+        "continuous_blocks": 1
+      },
+      {
+        "source": "Alpha Supression_EPOCPLUS_2021_03_01T21_53.csv.gz",
+        "native_rate": 128,
+        "old_samples": 955,
+        "rate_corrected_joined_samples": 955,
+        "rate_and_label_boundary_samples": 948,
+        "final_samples": 948,
+        "continuous_blocks": 2
+      },
+      {
+        "source": "Alpha Supression_EPOCX_2021_02_28T22_30.csv.gz",
+        "native_rate": 128,
+        "old_samples": 953,
+        "rate_corrected_joined_samples": 953,
+        "rate_and_label_boundary_samples": 946,
+        "final_samples": 946,
+        "continuous_blocks": 1
+      },
+      {
+        "source": "Alpha Supression_EPOCX_2021_03_12T22_45.csv.gz",
+        "native_rate": 128,
+        "old_samples": 954,
+        "rate_corrected_joined_samples": 954,
+        "rate_and_label_boundary_samples": 946,
+        "final_samples": 946,
+        "continuous_blocks": 1
+      },
+      {
+        "source": "Alpha Supression_EPOCX_2021_03_19T02_12.csv.gz",
+        "native_rate": 128,
+        "old_samples": 953,
+        "rate_corrected_joined_samples": 953,
+        "rate_and_label_boundary_samples": 946,
+        "final_samples": 946,
+        "continuous_blocks": 1
+      },
+      {
+        "source": "Alpha Supression_EPOCX_2021_04_06T14_46.csv.gz",
+        "native_rate": 128,
+        "old_samples": 953,
+        "rate_corrected_joined_samples": 953,
+        "rate_and_label_boundary_samples": 946,
+        "final_samples": 946,
+        "continuous_blocks": 1
+      },
+      {
+        "source": "Alpha Supression_EPOCX_2021_07_10T13_32.csv.gz",
+        "native_rate": 128,
+        "old_samples": 953,
+        "rate_corrected_joined_samples": 953,
+        "rate_and_label_boundary_samples": 946,
+        "final_samples": 946,
+        "continuous_blocks": 1
+      },
+      {
+        "source": "Alpha Supression_EPOCX_2021_07_17T20_44.csv.gz",
+        "native_rate": 128,
+        "old_samples": 953,
+        "rate_corrected_joined_samples": 953,
+        "rate_and_label_boundary_samples": 946,
+        "final_samples": 946,
+        "continuous_blocks": 1
+      },
+      {
+        "source": "Alpha Supression_EPOC_2020_11_27T22_20.csv.gz",
+        "native_rate": 128,
+        "old_samples": 952,
+        "rate_corrected_joined_samples": 952,
+        "rate_and_label_boundary_samples": 944,
+        "final_samples": 944,
+        "continuous_blocks": 1
+      }
+    ]
+  }
+}
