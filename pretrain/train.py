@@ -32,6 +32,7 @@ TRAINING_KEYS = {
     "heads",
     "dropout",
     "seed",
+    "split_seed",
     "epochs",
     "warmup_epochs",
     "precision",
@@ -127,31 +128,10 @@ def read_config(path):
     return settings
 
 
-def run_config(path):
-    """Prepare one seed split, then call the existing training loop in this process."""
-    settings = read_config(path)
-    if "seeds" in settings:
-        return run_seeds(settings)
-    device = settings["device"]
-    if device != "cpu":
-        from pretrain.gpu import available_gpu, gpu_snapshot
+def resolve_run_config(settings, metadata):
+    """Resolve the same stage recipe for training, profiling and queue validation."""
+    from pretrain.pipeline.training import resolve_training_config
 
-        physical_gpu = int(device.split(":")[1])
-        os.environ["CUDA_VISIBLE_DEVICES"] = available_gpu(
-            physical_gpu, allow_busy=settings["shared_gpu"]
-        )
-        initial_gpu = gpu_snapshot(physical_gpu)
-        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-        device = "cuda:0"
-
-    from pretrain.pipeline.budget import Budget, NoGpuBudget
-    from pretrain.pipeline.data import Windows
-    from pretrain.pipeline.splits import validate_prepared_input, validate_run_dataset, select_split
-    from pretrain.pipeline.training import resolve_training_config, run
-    from pretrain.tracking import track
-
-    source = Windows(settings["dataset"], "train")
-    validate_prepared_input(source.metadata)
     stage = settings["stage"]
     defaults = (
         {
@@ -174,14 +154,49 @@ def run_config(path):
             **supplied.get("optimizer", {}),
         }
         supplied["scheduler"] = {"minimum_lr": 1e-6, **supplied.get("scheduler", {})}
-    config = resolve_training_config(
+    return resolve_training_config(
         {
             **defaults,
             **supplied,
-            "input_samples": source.metadata["window_samples"],
+            "input_samples": metadata["window_samples"],
             "purpose": f"{settings['purpose']}_{stage}",
         }
     )
+
+
+def run_config(path):
+    """Prepare one seed split, then call the existing training loop in this process."""
+    settings = read_config(path)
+    if "seeds" in settings:
+        return run_seeds(settings)
+    device = settings["device"]
+    if device != "cpu":
+        from pretrain.gpu import available_gpu, gpu_snapshot
+
+        physical_gpu = int(device.split(":")[1])
+        os.environ["CUDA_VISIBLE_DEVICES"] = available_gpu(
+            physical_gpu, allow_busy=settings["shared_gpu"]
+        )
+        initial_gpu = gpu_snapshot(physical_gpu)
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+        device = "cuda:0"
+
+    from pretrain.pipeline.budget import Budget, NoGpuBudget
+    from pretrain.pipeline.data import Windows
+    from pretrain.pipeline.splits import validate_prepared_input, validate_run_dataset, select_split
+    from pretrain.pipeline.training import run
+    from pretrain.tracking import track
+
+    from pretrain.pipeline.dataset import DatasetReference
+
+    split_seed = settings.get("split_seed", settings.get("seed", 241))
+    selected = DatasetReference(
+        settings["dataset"], split_seed, settings.get("pretraining_scope", "subject_holdout")
+    )
+    source = Windows(selected, "train", verify_signals=False)
+    validate_prepared_input(source.metadata)
+    stage = settings["stage"]
+    config = resolve_run_config(settings, source.metadata)
     if device != "cpu":
         config["gpu_policy"] = {
             "physical_gpu": physical_gpu,
@@ -208,6 +223,8 @@ def run_config(path):
         validate_pretraining_model(payload, config, target_task=source.metadata["task"])
         recipe = copy.deepcopy(pretrained)
         recipe.pop("seed", None)
+        recipe.pop("split_seed", None)
+        recipe.pop("gpu_policy", None)
         if recipe.get("objective"):
             recipe["objective"].pop("seed", None)
         config["pretraining_recipe_id"] = fingerprint(recipe)[:12]
@@ -233,7 +250,7 @@ def run_config(path):
     dataset = select_split(
         settings["dataset"],
         root,
-        config["seed"],
+        config["split_seed"],
         scope=config.get("pretraining_scope", "subject_holdout"),
     )
     train = Windows(dataset, "train", verify_signals=False)
@@ -260,7 +277,7 @@ def run_config(path):
         track(
             settings.get("wandb", {}),
             config,
-            source.metadata,
+            train.metadata,
             root,
             stage=stage,
             resume=settings.get("resume"),

@@ -32,11 +32,11 @@ def test_fresh_queue_has_all_tasks_and_only_new_checkpoint_dependencies(tmp_path
     validate(manifest, root)
     tasks = manifest['tasks']
     assert Counter((t['domain'], t['stage']) for t in tasks) == {
-        ('in_domain', 'pretrain'): 20, ('in_domain', 'finetune'): 20,
-        ('cross_domain', 'pretrain'): 1, ('cross_domain', 'linear_probe'): 20,
-        ('cross_domain', 'finetune'): 20,
+        ('in_domain', 'pretrain'): 12, ('in_domain', 'finetune'): 12,
+        ('cross_domain', 'pretrain'): 1, ('cross_domain', 'linear_probe'): 12,
+        ('cross_domain', 'finetune'): 12,
     }
-    assert Counter(t['gpu'] for t in tasks) == {0: 41, 1: 40}
+    assert Counter(t['gpu'] for t in tasks) == {0: 25, 1: 24}
     for task in tasks:
         config = read_config(task['config'])
         assert config['resume'] is None
@@ -45,7 +45,7 @@ def test_fresh_queue_has_all_tasks_and_only_new_checkpoint_dependencies(tmp_path
         assert config['wandb']['enabled']
         assert config['purpose'] == 'paper'
         if task['stage'] == 'pretrain':
-            assert config['microbatch'] == 512 and config['logical_batch'] == 4096
+            assert config['microbatch'] == 256 and config['logical_batch'] == 256
         if task['domain'] == 'cross_domain' and task['stage'] != 'pretrain':
             assert task['depends'] == ['cross_domain--tuab--pretrain--s241']
         if task['domain'] == 'in_domain' and task['stage'] == 'finetune':
@@ -152,14 +152,19 @@ def test_memory_claim_rejects_pid_reuse_and_accounts_for_device(tmp_path, monkey
     assert task_usage(manifest, task, 'gpu1', memory) == 300
 
 
-def test_memory_queue_rejects_changed_reservation(tmp_path):
+def test_memory_queue_rejects_changed_reservation(tmp_path, monkeypatch):
+    from scripts.rerun import memory
+    from pretrain.train import RUN_KEYS
+
+    # Queue integrity is independent of HDF5 parsing, covered by release tests.
+    monkeypatch.setattr(memory, 'workload_contract', lambda config: {
+        k: v for k, v in config.items() if k not in RUN_KEYS | {'seed'}})
     root, manifest = generated(tmp_path)
     cases = {}
     for task in manifest['tasks']:
         config = read_config(task['config'])
-        key = config['stage'] + '/' + Path(config['dataset']).stem
-        cases[key] = {'config': {k: config[k] for k in
-            ('depth', 'width', 'heads', 'microbatch', 'logical_batch', 'precision')},
+        key = memory.memory_key(config)
+        cases[key] = {'workload': memory.workload_contract(config),
             'reservation_mib': 5000}
         task['reservation_mib'] = 5000
     manifest.update(admission='memory', memory_profile={
@@ -168,6 +173,34 @@ def test_memory_queue_rejects_changed_reservation(tmp_path):
     manifest['tasks'][0]['reservation_mib'] = 1
     with pytest.raises(ValueError, match='memory reservation'):
         validate(manifest, root)
+
+
+def test_memory_receipt_rejects_backend_objective_and_shape_changes(tmp_path):
+    import copy
+    from pretrain.pipeline.dataset import read_metadata
+    from scripts.rerun.memory import measured_case, memory_key, workload_contract
+    from tests.test.pipeline.data import prepared_fixture
+
+    dataset = prepared_fixture(tmp_path / 'data')
+    settings = read_config(ROOT / 'configs/stew.yaml')
+    settings.pop('seeds')
+    settings.update(dataset=str(dataset), seed=241, split_seed=241)
+    contract = workload_contract(settings)
+    profile = {'cases': {memory_key(settings): {'workload': contract, 'reservation_mib': 5000}}}
+    assert measured_case(profile, settings)['reservation_mib'] == 5000
+    for field, value in [('dictionary_backend', 'torch'), ('normalization_backend', 'torch'),
+                         ('probe_interval', 0)]:
+        changed = {**settings, field: value}
+        with pytest.raises(ValueError, match='measured workload'):
+            measured_case(profile, changed)
+    changed = copy.deepcopy(settings)
+    changed['objective']['k'] = 16
+    with pytest.raises(ValueError, match='measured workload'):
+        measured_case(profile, changed)
+    metadata = read_metadata(dataset)
+    changed_metadata = {**metadata, 'window_samples': 512}
+    assert workload_contract(settings, changed_metadata) != contract
+    assert workload_contract({**settings, 'seed': 243}) == contract
 
 
 def test_ready_job_can_use_other_gpu_when_preferred_device_is_full():

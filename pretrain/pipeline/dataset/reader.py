@@ -14,6 +14,7 @@ from pretrain.channel_identity import load_channel_vocabulary
 from pretrain.metadata import fingerprint
 from .groups import subject_groups, validate_membership
 from .provenance import validate_provenance
+from .partitions import validate_bank_membership
 from .schema import INDEX_DTYPE, SPLITS, array_hash, bank_fingerprint
 
 
@@ -86,13 +87,14 @@ def _read(handle, selected):
     groups = subject_groups(metadata["records"], index)
     if "subject_groups" in metadata and groups != metadata["subject_groups"]:
         raise ValueError("Saved duplicate subject groups changed")
-    validate_membership(groups, subjects)
+    validate_bank_membership(metadata, groups, subjects, key)
+    validate_membership({s: g for s, g in groups.items() if s in subjects}, subjects)
     codes = np.asarray(
         [
-            SPLITS[subjects[metadata["records"][int(number)]["subject"]]]
+            SPLITS.get(subjects.get(metadata["records"][int(number)]["subject"]), -1)
             for number in index["record"]
         ],
-        dtype="u1",
+        dtype="i1",
     )
     for role, code in SPLITS.items():
         if not np.array_equal(rows[role], np.flatnonzero(codes == code)):
@@ -101,7 +103,7 @@ def _read(handle, selected):
         subjects=subjects,
         split_seed=selected.seed,
         split_scope=selected.scope,
-        split_policy=(
+        split_policy=metadata.get("source_split_policy") or (
             "grouped_tuab_source_80_20_v1"
             if "subject_groups" in metadata
             else "tuab_source_80_20_v1"

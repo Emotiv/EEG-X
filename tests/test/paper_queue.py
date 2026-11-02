@@ -208,6 +208,8 @@ def prepared_fixture(tmp_path, monkeypatch):
     configs.mkdir(parents=True)
     for path in (repository / "configs").glob("*.yaml"):
         settings = yaml.safe_load(path.read_text())
+        if "seeds" in settings:
+            settings["seeds"] = [241, 242, 243, 244, 245]
         settings["output"] = str(tmp_path / "outputs" / path.stem)
         (configs / path.name).write_text(yaml.safe_dump(settings))
     (legacy / "software-contract.json").write_text("{}")

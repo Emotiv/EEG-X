@@ -169,7 +169,8 @@ def track(settings, config, metadata, output, *, stage, resume=None):
     selection = selection_metadata(stage)
 
     recipe = copy.deepcopy(config)
-    for key in ("seed", "purpose", "pretraining_checkpoint_sha256", "source_run_id"):
+    for key in ("seed", "split_seed", "purpose", "pretraining_checkpoint_sha256",
+                "source_run_id", "gpu_policy"):
         recipe.pop(key, None)
     if recipe.get("objective"):
         recipe["objective"].pop("seed", None)
@@ -212,6 +213,10 @@ def track(settings, config, metadata, output, *, stage, resume=None):
         resume="must" if previous and settings.get("mode", "online") == "online" else None,
         config={
             **config,
+            "data_release": metadata.get("release_id", metadata["fingerprint"]),
+            "data_protocol": metadata.get("release_protocol", {}).get("name"),
+            "split_seed": metadata.get("split_seed"),
+            "split_selection": metadata.get("release_protocol", {}).get("selection"),
             "model_name": "EEG-X",
             "task_name": metadata["task"],
             "stage": stage,

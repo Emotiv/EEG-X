@@ -76,5 +76,5 @@ def validate_run_dataset(config, metadata):
             "reference_provenance"
         ):
             raise ValueError("Paper experiments require established original-row provenance")
-        if metadata.get("split_seed") != config["seed"]:
-            raise ValueError("Paper experiments require the matching per-seed split")
+        if metadata.get("split_seed") != config.get("split_seed", config["seed"]):
+            raise ValueError("Paper experiments require the configured saved split")

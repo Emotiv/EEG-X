@@ -58,6 +58,7 @@ def resolve_training_config(config):
             **copy.deepcopy(config),
         }
     )
+    resolved.setdefault("split_seed", resolved["seed"])
     for name, defaults in (("optimizer", DEFAULT_OPTIMIZER), ("scheduler", DEFAULT_SCHEDULER)):
         supplied = resolved.get(name, {})
         if not isinstance(supplied, dict) or supplied.keys() - defaults.keys():
@@ -101,6 +102,7 @@ def resolve_training_config(config):
         raise ValueError("scheduler.minimum_lr cannot exceed optimizer.lr")
     for name in (
         "seed",
+        "split_seed",
         "epochs",
         "warmup_epochs",
         "logical_batch",

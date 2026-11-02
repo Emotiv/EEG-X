@@ -1,9 +1,9 @@
-dataset: ../.runs/data/bciciv-2a.h5
-output: ../.runs/paper-v1/cross_domain/bciciv-2a/linear_probe
+dataset: ../.runs/data/eegx-fixed-v1/bciciv-2a.h5
+output: ../.runs/eegx-fixed-v1/cross_domain/bciciv-2a/linear_probe
 stage: linear_probe
-checkpoint: ../.runs/paper-v1/cross_domain/tuab/pretrain/training/best.pth
+checkpoint: ../.runs/eegx-fixed-v1/cross_domain/tuab/pretrain/training/best.pth
 device: cuda:1
-budget: ../.runs/paper-gpu1-v1
+budget: ../.runs/eegx-fixed-v1/usage/gpu1
 depth: 8
 width: 64
 heads: 8
@@ -11,13 +11,11 @@ seeds:
 - 241
 - 242
 - 243
-- 244
-- 245
 epochs: 20
 warmup_epochs: 0
 precision: bf16
 logical_batch: 64
-microbatch: 16
+microbatch: 64
 workers: 2
 probe_interval: 0
 early_stopping:
@@ -40,3 +38,4 @@ compute:
   convolution: ieee
   cudnn_benchmark: false
   fill_uninitialized_memory: false
+split_seed: 241

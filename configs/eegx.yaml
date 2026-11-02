@@ -1,9 +1,9 @@
-dataset: ../.runs/data/dreamer-arousal.h5
-output: ../.runs/paper-v1/in_domain/dreamer-arousal/pretrain
+dataset: ../.runs/data/eegx-fixed-v1/dreamer-arousal.h5
+output: ../.runs/eegx-fixed-v1/in_domain/dreamer-arousal/pretrain
 stage: pretrain
 checkpoint: null
 device: cuda:1
-budget: ../.runs/paper-gpu1-v1
+budget: ../.runs/eegx-fixed-v1/usage/gpu1
 resume: null
 depth: 8
 width: 64
@@ -12,14 +12,12 @@ seeds:
 - 241
 - 242
 - 243
-- 244
-- 245
 dropout: 0.1
 epochs: 100
 warmup_epochs: 10
 precision: bf16
-logical_batch: 4096
-microbatch: 512
+logical_batch: 256
+microbatch: 256
 workers: 2
 compile: false
 deterministic: true
@@ -77,3 +75,4 @@ compute:
   convolution: ieee
   cudnn_benchmark: false
   fill_uninitialized_memory: false
+split_seed: 242

@@ -20,10 +20,13 @@ def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def build_tasks(configs, root, slots, data_root, *, flexible=False):
+def build_tasks(configs, root, slots, data_root, *, flexible=False, protocol=None):
     from pretrain.train import read_config
 
-    manifest = {'tasks': [], 'config_hashes': {}}
+    expected = sum(len(c.get('seeds', [c.get('seed')])) for c in configs.values())
+    if protocol is not None and expected != protocol['expected_runs']:
+        raise ValueError('Configuration matrix does not match the versioned protocol')
+    manifest = {'tasks': [], 'config_hashes': {}, 'expected_tasks': expected}
     for name, template in configs.items():
         for seed in template.get('seeds', [template.get('seed')]):
             settings = copy.deepcopy(template)
@@ -71,14 +74,14 @@ def build_tasks(configs, root, slots, data_root, *, flexible=False):
     tasks = manifest['tasks']
     identities = {t['id'] for t in tasks}
     outputs = {t['output'] for t in tasks}
-    if len(tasks) != 81 or len(identities) != 81 or len(outputs) != 81:
-        raise ValueError('Fresh paper study must contain exactly 81 unique tasks and outputs')
+    if len(tasks) != expected or len(identities) != expected or len(outputs) != expected:
+        raise ValueError('Fresh study must contain distinct tasks and outputs')
     if any(d not in identities for t in tasks for d in t['depends']):
         raise ValueError('Queue contains an unknown dependency')
     return manifest
 
 
-def prepare(root, slots, data_root, capacity_paths, memory_profile=None):
+def prepare(root, slots, data_root, capacity_paths=(), memory_profile=None):
     from pretrain.pipeline.budget import Budget
     from pretrain.pipeline.checkpoint import software_contract
     from pretrain.train import read_config
@@ -87,21 +90,22 @@ def prepare(root, slots, data_root, capacity_paths, memory_profile=None):
     if type(slots) is not int or slots < 1:
         raise ValueError('Concurrency must be positive')
     capacities = [json.loads(Path(p).read_text()) for p in capacity_paths]
-    if ({c['gpu'] for c in capacities} != {0, 1}
+    if not memory_profile and ({c['gpu'] for c in capacities} != {0, 1}
             or any(c['status'] != 'passed' or (not memory_profile and c['slots'] != slots)
                    for c in capacities)):
         raise ValueError('Both GPUs require successful capacity checks at the selected concurrency')
     contexts = [(c['resident']['used_mib'] - c['before']['used_mib']) / c['slots']
                 - max(w['peak_reserved_mib'] for w in c['workers']) for c in capacities]
-    reservation = math.ceil(max(w['peak_reserved_mib'] for c in capacities
-                               for w in c['concurrent']) + max(contexts) + 512)
+    reservation = (math.ceil(max(w['peak_reserved_mib'] for c in capacities
+                                for w in c['concurrent']) + max(contexts) + 512)
+                   if capacities else 0)
     root.mkdir(parents=True, exist_ok=False)
     (root / 'configs').mkdir()
     source = root / 'source'
     source.mkdir()
     files = subprocess.check_output(['git', 'ls-files', '-z'], cwd=ROOT).decode().split('\0')
     retained = [p for p in files if p and (p.startswith(('pretrain/', 'scripts/paper/',
-                    'scripts/rerun/', 'configs/')) or p in
+                    'scripts/rerun/', 'configs/', 'reproduction/')) or p in
                     {'Main.py', 'CONTEXT.md', 'uv.lock', 'pyproject.toml', 'docs/spec.md', 'docs/task.md'})]
     for relative in retained:
         original, target = ROOT / relative, source / relative
@@ -118,20 +122,25 @@ def prepare(root, slots, data_root, capacity_paths, memory_profile=None):
                 'headroom_mib': 2048, 'claims': str(root / '.claims'),
                 'budget': str(root / 'usage/gpu0'), 'tasks': [], 'config_hashes': {}}
     configs = {p.stem: read_config(p) for p in sorted((ROOT / 'configs').glob('*.yaml'))}
-    manifest.update(build_tasks(configs, root, slots, data_root, flexible=bool(memory_profile)))
+    protocol = json.loads((ROOT / 'reproduction/eegx-fixed-v1/protocol.json').read_text())
+    release = json.loads((data_root / 'manifest.json').read_text())
+    if release['protocol'] != protocol:
+        raise ValueError('Prepared release belongs to a different scientific protocol')
+    manifest['protocol'] = protocol
+    manifest['data_release'] = release
+    manifest.update(build_tasks(configs, root, slots, data_root, flexible=bool(memory_profile),
+                                protocol=protocol))
     if memory_profile:
+        from scripts.rerun.memory import measured_case, validate_hardware
+
         profile = json.loads(Path(memory_profile).read_text())
+        validate_hardware(profile)
         if profile['software_contract'] != manifest['software_contract']:
             raise ValueError('Memory profile belongs to different training software')
         manifest.update(admission='memory', headroom_mib=6144, memory_profile=profile)
         for task in manifest['tasks']:
             config = read_config(task['config'])
-            key = config['stage'] + '/' + Path(config['dataset']).stem
-            case = profile['cases'][key]
-            signature = {k: config[k] for k in
-                         ('depth', 'width', 'heads', 'microbatch', 'logical_batch', 'precision')}
-            if case['config'] != signature or case['reservation_mib'] <= 0:
-                raise ValueError(f'Memory profile configuration mismatch: {key}')
+            case = measured_case(profile, config)
             task['reservation_mib'] = case['reservation_mib']
         (root / 'memory-profile.json').write_text(json.dumps(profile, indent=2) + '\n')
     # Meters are independent per physical GPU and have an explicit null time limit.
@@ -166,7 +175,7 @@ if __name__ == '__main__':
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--slots', type=int, required=True)
     parser.add_argument('--data-root', type=Path, required=True)
-    parser.add_argument('--capacity', type=Path, nargs=2, required=True)
+    parser.add_argument('--capacity', type=Path, nargs=2, default=[])
     parser.add_argument('--memory-profile', type=Path)
     args = parser.parse_args()
     prepare(args.root, args.slots, args.data_root, args.capacity, args.memory_profile)

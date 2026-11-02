@@ -6,6 +6,54 @@ from pathlib import Path
 import subprocess
 
 
+def memory_key(settings):
+    return '/'.join((settings['stage'], Path(settings['dataset']).stem,
+                     settings.get('pretraining_scope', 'subject_holdout')))
+
+
+def workload_contract(settings, metadata=None):
+    """Bind a peak to the complete stage recipe and selected data dimensions."""
+    from pretrain.train import resolve_run_config
+    from pretrain.pipeline.dataset import DatasetReference, read_metadata
+    from pretrain.pipeline.checkpoint import dataset_identity
+
+    if metadata is None:
+        metadata = read_metadata(DatasetReference(
+            settings['dataset'], settings.get('split_seed', settings.get('seed', 241)),
+            settings.get('pretraining_scope', 'subject_holdout')))
+    config = resolve_run_config(settings, metadata)
+    for key in ('seed', 'split_seed'):
+        config.pop(key, None)
+    if config.get('objective'):
+        config['objective'].pop('seed', None)
+    return {'stage': settings['stage'], 'config': config,
+            'data': dataset_identity(metadata), 'channels': metadata['channel_ids'],
+            'window_samples': metadata['window_samples'], 'classes': metadata['classes']}
+
+
+def measured_case(profile, settings):
+    case = profile['cases'][memory_key(settings)]
+    if case.get('workload') != workload_contract(settings) or case['reservation_mib'] <= 0:
+        raise ValueError('Task memory reservation configuration does not match measured workload')
+    return case
+
+
+def hardware():
+    result = subprocess.run(['nvidia-smi', '--query-gpu=index,uuid,name,memory.total',
+                             '--format=csv,noheader,nounits'],
+                            check=True, capture_output=True, text=True)
+    return [dict(zip(('index', 'uuid', 'name', 'total_mib'),
+                     [part.strip() for part in row.split(',')]))
+            for row in result.stdout.splitlines()]
+
+
+def validate_hardware(profile):
+    if profile.get('hardware') != hardware():
+        raise ValueError('GPU hardware changed; measure memory again before admission')
+    if len({row['name'] for row in profile['hardware']}) != 1:
+        raise ValueError('Shared peak measurements require matching GPU models')
+
+
 def remaining_mib(free_mib, headroom_mib, reservations):
     """Global free memory already excludes current usage, including foreign owners."""
     return free_mib - headroom_mib - sum(

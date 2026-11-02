@@ -31,9 +31,9 @@ def test_all_paper_configs_use_the_selected_gpu_recipe():
         assert settings.get("deterministic", True) is True
         if settings["stage"] == "pretrain":
             assert settings["dictionary_backend"] == "triton"
-            assert (settings["microbatch"], settings["logical_batch"]) == (512, 4096)
+            assert (settings["microbatch"], settings["logical_batch"]) == (256, 256)
         else:
-            assert (settings["microbatch"], settings["logical_batch"]) == (16, 64)
+            assert (settings["microbatch"], settings["logical_batch"]) == (64, 64)
     assert stages == {"pretrain": 5, "finetune": 8, "linear_probe": 4}
 
 

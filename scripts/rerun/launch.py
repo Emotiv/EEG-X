@@ -29,8 +29,28 @@ def validate(manifest, root):
             raise ValueError(f'Frozen queue runtime changed: {relative}')
     identities, outputs = set(), set()
     records = {task['id']: task for task in manifest['tasks']}
-    if len(records) != 81 or len(manifest['tasks']) != 81:
-        raise ValueError('Expected exactly 81 paper tasks')
+    expected_tasks = manifest.get('expected_tasks', 81)
+    if len(records) != expected_tasks or len(manifest['tasks']) != expected_tasks:
+        raise ValueError('Task count differs from the frozen configuration matrix')
+    protocol = manifest.get('protocol')
+    if protocol:
+        if expected_tasks != protocol['expected_runs']:
+            raise ValueError('Task count differs from the versioned protocol')
+        from pretrain.pipeline.dataset import DatasetReference, read_metadata
+        checked_data = {}
+        for task in manifest['tasks']:
+            config = read_config(task['config'])
+            name = Path(config['dataset']).stem.replace('-', '_')
+            scope = config.get('pretraining_scope', 'subject_holdout')
+            key = (config['dataset'], config['split_seed'], scope)
+            if key not in checked_data:
+                checked_data[key] = read_metadata(DatasetReference(*key))
+            metadata = checked_data[key]
+            release = manifest['data_release']['datasets'][name]
+            if (metadata['release_id'] != release['release_id']
+                    or config['split_seed'] != protocol['datasets'][name]['split_seed']
+                    or config['seed'] not in protocol['training_seeds']):
+                raise ValueError('Task does not use its frozen data release, split and training seed')
     for task in manifest['tasks']:
         baseline = read_config(task['config'])
         for placement in task.get('placements', []):
@@ -46,11 +66,10 @@ def validate(manifest, root):
             raise ValueError(f'Generated configuration changed: {path.name}')
         config = read_config(path)
         if manifest.get('admission') == 'memory':
-            key = config['stage'] + '/' + Path(config['dataset']).stem
-            case = manifest['memory_profile']['cases'][key]
-            signature = {k: config[k] for k in
-                         ('depth', 'width', 'heads', 'microbatch', 'logical_batch', 'precision')}
-            if (case['config'] != signature or task['reservation_mib'] != case['reservation_mib']
+            from scripts.rerun.memory import measured_case
+
+            case = measured_case(manifest['memory_profile'], config)
+            if (task['reservation_mib'] != case['reservation_mib']
                     or task['reservation_mib'] <= 0
                     or manifest['memory_profile']['software_contract'] != manifest['software_contract']):
                 raise ValueError('Task memory reservation does not match measured configuration')
@@ -78,7 +97,7 @@ def validate(manifest, root):
                 raise ValueError('Downstream checkpoint must belong to its declared dependency')
         identities.add(task['id'])
         outputs.add(task['output'])
-    if len(identities) != 81 or len(outputs) != 81:
+    if len(identities) != expected_tasks or len(outputs) != expected_tasks:
         raise ValueError('Task identities and output directories must be unique')
     reachable = set()
     while True:
@@ -120,8 +139,12 @@ def run(path, *, validate_only=False):
     root = path.parent
     manifest = json.loads(path.read_text())
     validate(manifest, root)
+    if manifest.get('admission') == 'memory':
+        from scripts.rerun.memory import validate_hardware
+
+        validate_hardware(manifest['memory_profile'])
     if validate_only:
-        print(json.dumps({'status': 'validated', 'tasks': 81,
+        print(json.dumps({'status': 'validated', 'tasks': len(manifest['tasks']),
                           'slots_per_gpu': manifest['slots_per_gpu']}), flush=True)
         return 0
     from pretrain.gpu import gpu_snapshot

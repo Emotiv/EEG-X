@@ -28,7 +28,8 @@ def worker(args):
 
     torch.set_num_threads(2)
     settings = read_config(args.config)
-    dataset = DatasetReference(settings['dataset'], 241, settings.get('pretraining_scope', 'subject_holdout'))
+    dataset = DatasetReference(settings['dataset'], settings.get('split_seed', 241),
+                               settings.get('pretraining_scope', 'subject_holdout'))
     samples = Windows(dataset, 'train', verify_signals=False).metadata['window_samples']
     supplied = {k: v for k, v in settings.items() if k not in RUN_KEYS}
     if args.stage == 'finetune':
