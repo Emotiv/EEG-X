@@ -92,6 +92,20 @@ uv run --locked --no-active python Main.py --config configs/stew.yaml
 In-domain fine-tuning uses each seed's selected pretraining checkpoint.
 Cross-domain stages share the selected TUAB source checkpoint.
 
+For a separate model-size comparison, prepare a frozen queue from these same
+YAMLs. Review its source and generated configs before measuring capacity or
+starting training. This preserves existing outputs and the saved data splits:
+
+```sh
+python tools/queue/prepare.py --root .runs/eegx/d8w512 --depth 8 --width 512
+python .runs/eegx/d8w512/source/tools/queue/capacity.py --manifest .runs/eegx/d8w512/manifest.json
+python .runs/eegx/d8w512/source/tools/queue/run.py --manifest .runs/eegx/d8w512/manifest.json
+```
+
+The queue uses both GPUs as measured peak memory allows. W&B records the model
+`size` for grouping with the existing runs. Its model count is documented in
+[docs/model.md](docs/model.md).
+
 | Study rule | Value |
 |---|---|
 | Training seeds | 241, 242, 243; same subject split for every seed |

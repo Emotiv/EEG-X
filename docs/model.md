@@ -20,6 +20,15 @@ The current experiments use the hybrid EEG-X model selected from the reference b
 
 Recorded GPU attention backends confirm FlashAttention. Classification uses the encoder and head; reconstruction uses the Predictor and decoder too.
 
+The larger comparison keeps the same architecture and training recipe while increasing embedding width. Parameter counts below are measured from this implementation and do not match the paper's reported totals.
+
+| W&B size | Encoder layers | Embedding width | Encoder parameters | Total pretraining parameters |
+|---|---:|---:|---:|---:|
+| `d8w64` | 8 | 64 | 402,192 | 653,626 |
+| `d8w512` | 8 | 512 | 25,237,520 | 41,011,258 |
+
+Group runs by `domain`, `stage`, `task_name` and `size` to average training seeds separately for each model size. Runs keep an unset W&B group string; `size` is a configuration field.
+
 ## SoftDiCT loss
 
 The model reconstructs the processed EEG waveform. Apply the same fixed, seeded convolution dictionary to the prediction and target. Softmax across competing filters gives differentiable assignments; summing over time gives soft winner counts. Compare prediction and detached target counts with mean squared error.
