@@ -59,6 +59,41 @@ total_loss = masked_waveform_mse + auxiliary_weight * dict_loss
 
 The feature MSE averages over the batch and all channel/filter features. Soft assignments let gradients pass through temporal pooling, softmax and convolution into the reconstructed waveform, decoder, Predictor and encoder. The filters remain fixed buffers and receive no updates. The target branch runs without gradients.
 
+### What `soft_dict_mse` means, compared with hard DiCT
+
+`soft_dict_mse` is the squared difference between two vectors of soft counts. It compares dictionary features of reconstructed EEG against dictionary features of the original EEG. It does not compare filter weights or softmax probabilities directly at each time sample.
+
+| Operation | Hard winner-count DiCT | Current SoftDiCT |
+|---|---|---|
+| Assignment within a filter group | Only the largest response wins | Softmax distributes probability across filters |
+| Temporal pooling | Sum discrete winner indicators | Sum soft assignment probabilities |
+| Reconstruction loss | MSE between hard-count vectors | MSE between soft-count vectors |
+| Gradient to the waveform | Discrete argmax/count routing blocks a useful gradient | Softmax and convolution propagate gradients |
+| Relationship | Hard dictionary statistic | Differentiable surrogate, not numerically identical to hard DiCT |
+
+SoftDiCT preserves the fixed convolution dictionary and temporal counting idea. Softening changes the statistic and therefore the loss. This comparison concerns hard winner counts; the current implementation does not include the extra branches of other HYDRA variants.
+
+```python
+def soft_dict(signal):
+    # Process channels independently with the same fixed filter banks.
+    features = []
+    for filters, dilation in fixed_filter_banks:
+        responses = same_padded_convolution(signal.float(), filters, dilation)
+        responses = group_filters(responses)  # [batch, channel, time, group, filter]
+        probabilities = softmax(responses / temperature, dim="filter")
+        soft_counts = probabilities.sum(dim="time")
+        features.append(flatten_channel_group_filter(soft_counts))
+    return concatenate(features, dim="feature")
+
+
+with torch.no_grad():
+    target_counts = soft_dict(original_eeg)
+predicted_counts = soft_dict(reconstructed_eeg)
+soft_dict_mse = (predicted_counts - target_counts).square().mean()
+```
+
+The named dimensions above are pseudocode. The final mean covers every sample, channel, filter group, kernel length and dilation. Counts are summed over time before squaring, so longer windows can change the loss scale even with the same auxiliary weight.
+
 The fused GPU implementation combines convolution, softmax and temporal reduction to reduce temporary memory. It retains this objective and computes dictionary features and loss in FP32. SoftDiCT therefore acts as an auxiliary waveform reconstruction loss; it is not the model's input tokenizer in this configuration.
 
 ### High-level model code
