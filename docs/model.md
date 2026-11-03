@@ -74,6 +74,19 @@ The feature MSE averages over the batch and all channel/filter features. Soft as
 SoftDiCT preserves the fixed convolution dictionary and temporal counting idea. Softening changes the statistic and therefore the loss. This comparison concerns hard winner counts; the current implementation does not include the extra branches of other HYDRA variants.
 
 ```python
+def hard_dict(signal):
+    # Same filters, channel handling and pooling as soft_dict below.
+    features = []
+    for filters, dilation in fixed_filter_banks:
+        responses = same_padded_convolution(signal.float(), filters, dilation)
+        responses = group_filters(responses)  # [batch, channel, time, group, filter]
+        winners = responses.argmax(dim="filter")
+        assignments = one_hot(winners, num_classes=filters_per_group).float()
+        hard_counts = assignments.sum(dim="time")
+        features.append(flatten_channel_group_filter(hard_counts))
+    return concatenate(features, dim="feature")
+
+
 def soft_dict(signal):
     # Process channels independently with the same fixed filter banks.
     features = []
@@ -90,9 +103,17 @@ with torch.no_grad():
     target_counts = soft_dict(original_eeg)
 predicted_counts = soft_dict(reconstructed_eeg)
 soft_dict_mse = (predicted_counts - target_counts).square().mean()
+
+# Comparison only: argmax interrupts gradients to reconstructed_eeg.
+with torch.no_grad():
+    hard_target_counts = hard_dict(original_eeg)
+hard_predicted_counts = hard_dict(reconstructed_eeg)
+hard_dict_mse = (hard_predicted_counts - hard_target_counts).square().mean()
 ```
 
-The named dimensions above are pseudocode. The final mean covers every sample, channel, filter group, kernel length and dilation. Counts are summed over time before squaring, so longer windows can change the loss scale even with the same auxiliary weight.
+The named dimensions above are pseudocode. `hard_dict` isolates the hard winner-count rule for comparison; training uses `soft_dict`. Both functions share convolution and pooling. Their assignment step differs: `argmax` followed by `one_hot` versus `softmax`.
+
+The final mean covers every sample, channel, filter group, kernel length and dilation. Counts are summed over time before squaring, so longer windows can change the loss scale even with the same auxiliary weight.
 
 The fused GPU implementation combines convolution, softmax and temporal reduction to reduce temporary memory. It retains this objective and computes dictionary features and loss in FP32. SoftDiCT therefore acts as an auxiliary waveform reconstruction loss; it is not the model's input tokenizer in this configuration.
 
