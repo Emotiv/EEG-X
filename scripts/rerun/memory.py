@@ -7,8 +7,9 @@ import subprocess
 
 
 def memory_key(settings):
-    domain = settings.get('wandb', {}).get('domain') or (
-        'cross_domain' if settings.get('pretraining_scope') == 'tuab_source' else 'in_domain')
+    from pretrain.train import experiment_domain
+
+    domain = experiment_domain(settings)
     return '/'.join((domain, settings['stage'], Path(settings['dataset']).stem,
                      settings.get('pretraining_scope', 'subject_holdout')))
 

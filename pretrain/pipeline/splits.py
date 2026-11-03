@@ -61,6 +61,12 @@ def validate_run_dataset(config, metadata):
     elif metadata.get("split_scope") == "tuab_source":
         raise ValueError("Shared TUAB data cannot be used as an in-domain subject holdout")
     if config.get("purpose", "").startswith("paper_"):
+        if config.get("pretraining_scope") == "tuab_source":
+            from pretrain.pipeline.dataset.partitions import official_subjects
+
+            official = official_subjects(metadata["records"], metadata["subject_groups"])
+            if any(official[subject] != "train" for subject in metadata["subjects"]):
+                raise ValueError("Paper TUAB source pretraining must exclude official test subjects")
         validate_prepared_input(metadata)
         from pretrain.pipeline.dataset.catalog import REFERENCES
 

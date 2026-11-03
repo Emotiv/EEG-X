@@ -44,6 +44,8 @@ def build_tasks(configs, root, slots, data_root, *, flexible=False, protocol=Non
             settings.update(dataset=str(dataset), output=str(output), device=f'cuda:{gpu}',
                             budget=str(root / f'usage/gpu{gpu}'), resume=None,
                             shared_gpu=True, concurrent_gpu_runs=slots)
+            if settings.get('source_dataset'):
+                settings['source_dataset'] = str(data_root / Path(settings['source_dataset']).name)
             settings['wandb'].update(project='eegx', entity='quoc-emotiv', group=None,
                                      name=f'EEG-X--{domain}--{task}--{stage}--seed-{seed}')
             dependencies = []

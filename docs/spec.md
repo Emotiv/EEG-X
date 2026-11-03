@@ -54,7 +54,7 @@ The user waived proof of upstream non-rASR history. Reconstruct the same process
 
 Each paired target uses identical prepared data and train/validation/test indices in both domains. The domain is explicit; a dataset name does not determine its domain. Each in-domain model starts from scratch. Each cross-domain run starts independently from one shared TUAB encoder with the matching architecture. Source and target seeds need not match. Source pretraining uses a fixed subject-wise 80/20 split within official TUAB training only and selects minimum validation reconstruction loss.
 
-New pretraining checkpoints record the source task, release hash and subject-split identity. In-domain fine-tuning requires the same prepared dataset and split as pretraining. Cross-domain linear probing and fine-tuning require the shared TUAB train/validation source. A mismatched or missing source identity stops evaluation before test access and result logging.
+New pretraining checkpoints record the source task, release hash and subject-split identity. In-domain fine-tuning requires the same prepared dataset and split as pretraining. Cross-domain linear probing and fine-tuning require the shared TUAB train/validation source. Their YAML pins `source_dataset` to the prepared TUAB HDF5 file; evaluation compares the checkpoint against that exact release and saved source bank. Paper source pretraining also rejects official test subjects even when an older pooled bank is supplied. A mismatched or missing source identity stops evaluation before test access and result logging.
 
 | Split decision | Contract |
 |---|---|

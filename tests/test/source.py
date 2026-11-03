@@ -310,3 +310,66 @@ def test_same_target_supports_both_domains_with_identical_saved_membership(tmp_p
             wandb={"enabled": False, "domain": domain},
         )
         assert rejected.returncode != 0
+
+
+def test_public_yaml_binds_transfer_to_declared_source_release_and_bank(tmp_path, monkeypatch):
+    import torch
+    from pretrain.pipeline import finetuning
+    from pretrain.pipeline.checkpoint import contract, dataset_identity
+    from pretrain.pipeline.dataset import DatasetReference, read_metadata
+    from pretrain.pipeline.release.build import build_release
+    from pretrain.pipeline.training import resolve_training_config
+    from pretrain.models.factory import create_model
+    from pretrain.train import run_config
+    from tests.test.pipeline.release import official_fixture
+
+    old = official_fixture(tmp_path / "old")
+    protocol = tmp_path / "protocol.json"
+    protocol.write_text(json.dumps({"name": "fixture", "datasets": {
+        "tuab": {"rule": "official", "split_seed": 241}}}))
+    build_release(old, tmp_path / "fixed", protocol)
+    source_file = tmp_path / "fixed/tuab.h5"
+    expected = read_metadata(DatasetReference(source_file, 241, "tuab_source"))
+    pooled = read_metadata(DatasetReference(old / "tuab.h5", 241, "tuab_source"))
+    target = dataset(tmp_path / "target", "crowdsourced")
+    config = resolve_training_config({
+        "seed": 241, "domain": "cross_domain", "purpose": "paper_pretrain",
+        "pretraining_scope": "tuab_source", "input_samples": 256,
+        "depth": 1, "width": 8, "heads": 8, "objective": None, "precision": "fp32",
+    })
+    payload = {"config": config, "model": create_model(config).state_dict(),
+               "contract": contract(config, expected)}
+    checkpoint = tmp_path / "source.pth"
+    path = tmp_path / "run.yaml"
+    settings = {"dataset": str(target), "source_dataset": str(source_file),
+                "checkpoint": str(checkpoint), "output": str(tmp_path / "valid"),
+                "stage": "finetune", "purpose": "engineering", "device": "cpu",
+                "seed": 241, "split_seed": 241, "precision": "fp32", "depth": 1,
+                "width": 8, "heads": 8, "objective": None,
+                "wandb": {"enabled": False, "domain": "cross_domain"}}
+    observed = []
+    monkeypatch.setattr(finetuning, "run", lambda *args, **kwargs: observed.append(True))
+    torch.save(payload, checkpoint)
+    path.write_text(yaml.safe_dump(settings))
+    run_config(path)
+    assert observed == [True]
+    assert dataset_identity(expected) != dataset_identity(pooled)
+    for key in ("release_sha256", "split_sha256"):
+        payload["contract"]["dataset_identity"] = {
+            **dataset_identity(expected), key: dataset_identity(pooled)[key]}
+        torch.save(payload, checkpoint)
+        settings["output"] = str(tmp_path / ("wrong-" + key))
+        path.write_text(yaml.safe_dump(settings))
+        with pytest.raises(ValueError, match="source release or saved split"):
+            run_config(path)
+    assert observed == [True]
+    assert not list(tmp_path.glob("wrong-*/training"))
+
+    from pretrain.pipeline.downstream import validate_pretraining_source
+    config["purpose"] = "paper_finetune"
+    with pytest.raises(ValueError, match="requires source_dataset"):
+        validate_pretraining_source(payload, config, read_metadata(target), mode="finetune")
+    from pretrain.pipeline.splits import validate_run_dataset
+    config["purpose"] = "paper_pretrain"
+    with pytest.raises(ValueError, match="exclude official test"):
+        validate_run_dataset(config, pooled)

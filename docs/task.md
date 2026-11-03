@@ -50,3 +50,5 @@ Implementation order: update code and data; run meaningful CPU and GPU checks; r
 The original queue keeps ownership of its existing tasks and outputs. A supplement contains only missing in-domain tasks; its manifest records and verifies the original queue evidence. Do not duplicate source pretraining or repeat existing runs. Both queues retain their own frozen code and checkpoint contracts.
 
 Supplemental GPU dispatch waits for the original queue to finish successfully. The immutable old launcher cannot coordinate reservations with a new launcher. The waiting supplement owns no training processes or GPU allocations. A failed original queue leaves the supplement unstarted.
+
+Cross-domain downstream YAMLs declare `source_dataset`, using the same prepared TUAB release as source pretraining. The runner derives the expected source release and bank identity from that file, rejects mismatched checkpoints before training/test access, and rejects pooled official-test subjects for paper source pretraining.

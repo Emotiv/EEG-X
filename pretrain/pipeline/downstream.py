@@ -42,6 +42,11 @@ def validate_pretraining_source(payload, config, manifest, *, mode):
     if transfer:
         if source["task"] != "tuab" or source.get("scope") != "tuab_source":
             raise ValueError("Cross-domain evaluation requires the shared TUAB source checkpoint")
+        expected_source = config.get("pretraining_source_identity")
+        if config.get("purpose", "").startswith("paper_") and expected_source is None:
+            raise ValueError("Paper cross-domain evaluation requires source_dataset to pin its source")
+        if expected_source is not None and source != expected_source:
+            raise ValueError("Cross-domain source release or saved split differs from source_dataset")
         return
     if source != target or payload["contract"]["dataset"] != manifest["fingerprint"]:
         raise ValueError(

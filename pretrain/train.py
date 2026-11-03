@@ -19,6 +19,7 @@ RUN_KEYS = {
     "wandb",
     "stage",
     "checkpoint",
+    "source_dataset",
     "seeds",
     "purpose",
     "shared_gpu",
@@ -56,6 +57,13 @@ TRAINING_KEYS = {
 }
 
 
+def experiment_domain(settings):
+    """Use one domain rule for training, source routing and memory admission."""
+    return settings.get("wandb", {}).get("domain") or (
+        "cross_domain" if settings.get("pretraining_scope") == "tuab_source" else "in_domain"
+    )
+
+
 def read_config(path):
     """Resolve paths beside the YAML file and reject misspelled settings."""
     path = Path(path).resolve()
@@ -84,7 +92,7 @@ def read_config(path):
     for name in ("dataset", "output"):
         if not isinstance(settings.get(name), str) or not settings[name].strip():
             raise ValueError(f"Training YAML requires {name}")
-    for name in ("dataset", "output", "budget", "resume", "checkpoint"):
+    for name in ("dataset", "output", "budget", "resume", "checkpoint", "source_dataset"):
         value = settings.get(name)
         if value is not None:
             if not isinstance(value, str) or not value.strip():
@@ -125,6 +133,10 @@ def read_config(path):
     from pretrain.tracking import validate_settings
 
     validate_settings(settings.get("wandb", {}))
+    if settings.get("source_dataset") and (
+        stage == "pretrain" or experiment_domain(settings) != "cross_domain"
+    ):
+        raise ValueError("source_dataset applies only to cross-domain downstream evaluation")
     return settings
 
 
@@ -154,17 +166,27 @@ def resolve_run_config(settings, metadata):
             **supplied.get("optimizer", {}),
         }
         supplied["scheduler"] = {"minimum_lr": 1e-6, **supplied.get("scheduler", {})}
-    return resolve_training_config(
+    resolved = resolve_training_config(
         {
             **defaults,
             **supplied,
             "input_samples": metadata["window_samples"],
             "purpose": f"{settings['purpose']}_{stage}",
-            "domain": settings.get("wandb", {}).get("domain") or (
-                "cross_domain" if settings.get("pretraining_scope") == "tuab_source" else "in_domain"
-            ),
+            "domain": experiment_domain(settings),
         }
     )
+    if settings.get("source_dataset"):
+        from pretrain.pipeline.dataset import DatasetReference, read_metadata
+        from pretrain.pipeline.checkpoint import dataset_identity
+        from pretrain.pipeline.splits import validate_run_dataset
+
+        source = read_metadata(DatasetReference(settings["source_dataset"], 241, "tuab_source"))
+        validate_run_dataset(
+            {"purpose": f"{settings['purpose']}_pretrain", "pretraining_scope": "tuab_source",
+             "seed": 241, "split_seed": 241}, source,
+        )
+        resolved["pretraining_source_identity"] = dataset_identity(source)
+    return resolved
 
 
 def run_config(path):

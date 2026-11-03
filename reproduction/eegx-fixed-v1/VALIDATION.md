@@ -2,8 +2,8 @@
 
 | Check | Result |
 |---|---:|
-| Automated tests passed | 299 |
-| Automated tests skipped | 1 |
+| Prior full-suite tests passed | 299 |
+| Prior full-suite tests skipped | 1 |
 | Audited dataset files | 8 |
 | Audited EEG windows | 772,784 |
 | Self-contained HDF5 payload, bytes | 42,173,621,909 |
@@ -39,3 +39,13 @@ STEW and DREAMER split selection used historical test scores. Their results rema
 | Additive execution | No duplicate task IDs; wait for original queue success before GPU admission |
 
 Actual CPU training and fine-tuning verified both modes on the same saved target membership. Wrong-domain source checkpoints were rejected. The supplement completion gate passed success, failure and stop checks.
+
+| Source guard review | Result |
+|---|---|
+| Affected source, YAML, tracking, queue and data tests | 76 passed |
+| Source pin | Valid declared release/bank accepted; mismatched release or bank rejected before training |
+| Paper source policy | Official test subjects rejected even in a legacy pooled source bank |
+| Domain resolution | Shared by training and memory admission |
+| Source lint and review | Passed; no remaining findings |
+
+The direct YAML acceptance gap was reproduced before the fix. Existing experiment snapshots remain unchanged; these checks apply to future direct runs and newly prepared queues.

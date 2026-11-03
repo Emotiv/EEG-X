@@ -43,3 +43,5 @@ W&B project `quoc-emotiv/eegx` keeps one run per tracked experiment. Group compl
 The paired study adds missing tasks without changing the original queue. Use `scripts/rerun/prepare.py --previous <original-manifest>` to prepare only the missing tasks. The study matrix is `study.json`; the original data protocol and release remain unchanged. Each queue retains its frozen source and selected checkpoints.
 
 The supplement waits for successful completion of the original queue before GPU admission. This prevents independent launchers from reserving the same free memory. It creates no extra W&B runs while waiting.
+
+Cross-domain evaluation also declares `source_dataset`, the TUAB HDF5 release used by shared pretraining. Its saved source bank pins the expected checkpoint release and split. Paper evaluation rejects a missing source declaration, a different source release or bank, and source training that includes official test subjects.

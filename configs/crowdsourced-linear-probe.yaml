@@ -39,3 +39,4 @@ compute:
   cudnn_benchmark: false
   fill_uninitialized_memory: false
 split_seed: 241
+source_dataset: ../.runs/data/eegx-fixed-v1/tuab.h5
