@@ -61,6 +61,50 @@ The feature MSE averages over the batch and all channel/filter features. Soft as
 
 The fused GPU implementation combines convolution, softmax and temporal reduction to reduce temporary memory. It retains this objective and computes dictionary features and loss in FP32. SoftDiCT therefore acts as an auxiliary waveform reconstruction loss; it is not the model's input tokenizer in this configuration.
 
+### High-level model code
+
+This pseudocode shows the current pretraining path. Selection and restoration helpers preserve each sample's original patch order. `mask` is true for hidden patches; the auxiliary weight comes from the dictionary settings above.
+
+```python
+def forward(eeg, channel_ids, mask, auxiliary_weight):
+    # Tokenize each patch independently, then add spatial/time positions.
+    patches = patchify(eeg)
+    spectrum = abs(rfft(patches.float() * hann_window, norm="ortho"))
+    positions = spatial_time_positions(channel_ids)
+    tokens = rmsnorm(raw_projection(patches)
+                     + spectral_projection(spectrum) + positions)
+
+    # Encode visible patches and predict representations at hidden positions.
+    context = encoder(select_visible(tokens, mask))
+    queries = mask_token + select_hidden(positions, mask)
+    hidden = predictor(context, queries)
+    full_sequence = restore_patch_order(context, hidden, mask)
+    decoded = decoder(full_sequence + positions)
+    predicted_patches = reconstruction_head(decoded)
+
+    # Waveform loss covers hidden patches only.
+    patch_mse = (predicted_patches.float() - patches.float()).square().mean(-1)
+    raw_loss = (patch_mse * mask).sum() / mask.sum()
+
+    # Dictionary loss covers the full reconstructed waveform, per channel.
+    reconstructed_eeg = unpatchify(predicted_patches)
+    with torch.no_grad():
+        target_features = soft_dict(eeg.float())
+    predicted_features = soft_dict(reconstructed_eeg.float())
+    dict_loss = mse_loss(predicted_features, target_features)
+    loss = raw_loss + auxiliary_weight * dict_loss
+    return loss, raw_loss.detach(), dict_loss.detach()
+
+
+optimizer.zero_grad()
+loss, raw_mse, soft_dict_mse = model(eeg, channel_ids, mask, auxiliary_weight)
+loss.backward()
+clip_grad_norm_(model.parameters(), max_norm=gradient_clip)
+optimizer.step()
+```
+
+The waveform loss has an implicit unit weight. The auxiliary weight multiplies the dictionary MSE directly; there is no learned weighting or automatic scale correction. Validation logs both terms, but checkpoint selection uses raw waveform MSE.
+
 ## Training
 
 | Stage | Optimizer / peak learning rate | Micro / global batch | Maximum epochs |
