@@ -30,10 +30,36 @@ The model reconstructs the processed EEG waveform. Apply the same fixed, seeded 
 | Groups / filters per group | 8 / 32 |
 | Temperature / features per channel | 1.0 / 2,560 |
 | Auxiliary loss weight | 1.0 |
+| Dictionary random seed | 245, shared across training seeds |
 
 Filters are zero-mean, unit-L2-normalized and fixed. Channels share filters but compete independently. Gradients flow through the predicted signal into the model.
 
 Total loss is masked waveform MSE plus weighted SoftDiCT feature MSE. Waveform MSE uses masked patches; SoftDiCT uses the full predicted window, including visible positions. Counts have no window-length normalization or feature standardization, and the losses have no adaptive balancing.
+
+### How the differentiable dictionary works
+
+For each EEG channel, convolve the waveform with each fixed filter bank using symmetric zero padding and the configured dilation. Within each group, filters compete at every time sample. Replace a discrete winner with a softmax probability:
+
+```text
+response[t, g, k] = convolution(signal, filter[g, k])[t]
+probability[t, g, k] = softmax_k(response[t, g, k] / temperature)
+count[g, k] = sum_t probability[t, g, k]
+features(signal) = concatenate counts across kernel lengths, dilations and channels
+```
+
+Each count measures how often a filter responds strongly relative to its group. The current objective uses positive-response probabilities only. It has no separate negative-winner branch, amplitude weighting or first-difference branch. Pooling removes temporal order from the dictionary features; waveform MSE still checks sample alignment.
+
+Apply this transform to both the decoder waveform and the original processed EEG:
+
+```text
+target_features = stop_gradient(features(original_eeg))
+dict_loss = mean((features(reconstructed_eeg) - target_features)^2)
+total_loss = masked_waveform_mse + auxiliary_weight * dict_loss
+```
+
+The feature MSE averages over the batch and all channel/filter features. Soft assignments let gradients pass through temporal pooling, softmax and convolution into the reconstructed waveform, decoder, Predictor and encoder. The filters remain fixed buffers and receive no updates. The target branch runs without gradients.
+
+The fused GPU implementation combines convolution, softmax and temporal reduction to reduce temporary memory. It retains this objective and computes dictionary features and loss in FP32. SoftDiCT therefore acts as an auxiliary waveform reconstruction loss; it is not the model's input tokenizer in this configuration.
 
 ## Training
 
