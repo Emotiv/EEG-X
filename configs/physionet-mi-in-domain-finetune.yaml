@@ -1,4 +1,4 @@
-dataset: ../.runs/data/eegx-fixed-v1/physionet-mi.h5
+dataset: ../data/physionet-mi.h5
 output: ../.runs/eegx-fixed-v1/in_domain/physionet-mi/finetune
 stage: finetune
 checkpoint: ../.runs/eegx-fixed-v1/in_domain/physionet-mi/pretrain/seed-{seed}/training/best.pth

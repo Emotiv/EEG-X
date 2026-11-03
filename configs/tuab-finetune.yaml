@@ -1,4 +1,4 @@
-dataset: ../.runs/data/eegx-fixed-v1/tuab.h5
+dataset: ../data/tuab.h5
 output: ../.runs/eegx-fixed-v1/in_domain/tuab/finetune
 stage: finetune
 checkpoint: ../.runs/eegx-fixed-v1/in_domain/tuab/pretrain/seed-{seed}/training/best.pth

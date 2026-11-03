@@ -1,4 +1,4 @@
-dataset: ../.runs/data/eegx-fixed-v1/kalunga.h5
+dataset: ../data/kalunga.h5
 output: ../.runs/eegx-fixed-v1/in_domain/kalunga/pretrain
 stage: pretrain
 checkpoint: null

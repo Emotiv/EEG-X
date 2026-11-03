@@ -1,4 +1,4 @@
-dataset: ../.runs/data/eegx-fixed-v1/physionet-mi.h5
+dataset: ../data/physionet-mi.h5
 output: ../.runs/eegx-fixed-v1/cross_domain/physionet-mi/linear_probe
 stage: linear_probe
 checkpoint: ../.runs/eegx-fixed-v1/cross_domain/tuab/pretrain/training/best.pth
@@ -39,4 +39,4 @@ compute:
   cudnn_benchmark: false
   fill_uninitialized_memory: false
 split_seed: 241
-source_dataset: ../.runs/data/eegx-fixed-v1/tuab.h5
+source_dataset: ../data/tuab.h5

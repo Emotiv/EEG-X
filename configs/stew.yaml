@@ -1,4 +1,4 @@
-dataset: ../.runs/data/eegx-fixed-v1/stew.h5
+dataset: ../data/stew.h5
 output: ../.runs/eegx-fixed-v1/in_domain/stew/pretrain
 stage: pretrain
 checkpoint: null

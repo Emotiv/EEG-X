@@ -48,7 +48,8 @@ def software_contract():
         "triton": triton_version,
         "python": sys.version,
         "uv_lock": sha256_file(root / "uv.lock"),
-        "specification": sha256_file(root / "docs" / "spec.md"),
+        "specification_file": "docs/model.md",
+        "specification": sha256_file(root / "docs" / "model.md"),
         "dependencies": {name: version(name) for name in ("numpy", "scipy", "mne", "scikit-learn")},
     }
 

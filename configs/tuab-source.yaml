@@ -1,4 +1,4 @@
-dataset: ../.runs/data/eegx-fixed-v1/tuab.h5
+dataset: ../data/tuab.h5
 output: ../.runs/eegx-fixed-v1/cross_domain/tuab/pretrain
 stage: pretrain
 checkpoint: null

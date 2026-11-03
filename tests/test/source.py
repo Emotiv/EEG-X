@@ -373,3 +373,18 @@ def test_public_yaml_binds_transfer_to_declared_source_release_and_bank(tmp_path
     config["purpose"] = "paper_pretrain"
     with pytest.raises(ValueError, match="exclude official test"):
         validate_run_dataset(config, pooled)
+
+
+def test_frozen_revision_uses_snapshot_receipt_and_rejects_changed_contract(tmp_path, monkeypatch):
+    import json
+    from pretrain.pipeline import checkpoint
+
+    monkeypatch.setattr(checkpoint, '__file__', str(tmp_path / 'pretrain/pipeline/checkpoint.py'))
+    monkeypatch.setattr(checkpoint, 'software_contract', lambda: {'source': 'frozen'})
+    receipt = tmp_path / 'source-revision.json'
+    receipt.write_text(json.dumps({'commit': 'snapshot-commit', 'dirty': False,
+                                   'software_contract': {'source': 'frozen'}}))
+    assert checkpoint.source_revision() == {'commit': 'snapshot-commit', 'dirty': False}
+    monkeypatch.setattr(checkpoint, 'software_contract', lambda: {'source': 'changed'})
+    with pytest.raises(ValueError, match='Frozen source revision'):
+        checkpoint.source_revision()

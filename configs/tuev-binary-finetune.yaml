@@ -1,4 +1,4 @@
-dataset: ../.runs/data/eegx-fixed-v1/tuev-binary.h5
+dataset: ../data/tuev-binary.h5
 output: ../.runs/eegx-fixed-v1/in_domain/tuev-binary/finetune
 stage: finetune
 checkpoint: ../.runs/eegx-fixed-v1/in_domain/tuev-binary/pretrain/seed-{seed}/training/best.pth

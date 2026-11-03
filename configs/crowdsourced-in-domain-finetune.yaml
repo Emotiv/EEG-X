@@ -1,4 +1,4 @@
-dataset: ../.runs/data/eegx-fixed-v1/crowdsourced.h5
+dataset: ../data/crowdsourced.h5
 output: ../.runs/eegx-fixed-v1/in_domain/crowdsourced/finetune
 stage: finetune
 checkpoint: ../.runs/eegx-fixed-v1/in_domain/crowdsourced/pretrain/seed-{seed}/training/best.pth

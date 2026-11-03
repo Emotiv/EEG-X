@@ -161,15 +161,17 @@ def test_fused_dictionary_rejects_unsupported_group_layouts(groups, k):
 def test_fused_gpu_dictionary_matches_reference_values_and_gradients():
     from pretrain.compute import configure_compute
     from pretrain.pipeline.budget import Budget
-    from scripts.profile_training import profiling_budget
+    from pretrain.gpu import available_gpu
 
     path = os.environ.get("EEGX_BUDGET_PATH")
     if not path:
         pytest.fail("Provide the existing authoritative budget for GPU checks")
     if not torch.cuda.is_available():
         pytest.skip("CUDA unavailable")
+    budget = Budget.from_ledger(path, device=available_gpu(0))
     with (
-        profiling_budget(Budget, path, reserve_live=True, max_seconds=180, concurrency=4),
+        budget.stop_on_signals(),
+        budget.lease(),
         configure_compute({"precision": "bf16", "deterministic": True}, "cuda:0"),
     ):
         torch.cuda.set_per_process_memory_fraction(
@@ -182,6 +184,7 @@ def test_fused_gpu_dictionary_matches_reference_values_and_gradients():
             (256, 14, 8, 32, 1.0, False),
             (1280, 19, 8, 32, 1.0, False),
         ]:
+            budget.check()
             objective = {**DEFAULT_HYDRA, "groups": groups, "k": k, "temperature": temperature}
             transform = SoftDiCT(objective, backend="triton").cuda()
             values = (

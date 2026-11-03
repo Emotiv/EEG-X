@@ -1,4 +1,4 @@
-dataset: ../.runs/data/eegx-fixed-v1/dreamer-arousal.h5
+dataset: ../data/dreamer-arousal.h5
 output: ../.runs/eegx-fixed-v1/in_domain/dreamer-arousal/pretrain
 stage: pretrain
 checkpoint: null

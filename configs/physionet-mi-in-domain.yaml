@@ -1,4 +1,4 @@
-dataset: ../.runs/data/eegx-fixed-v1/physionet-mi.h5
+dataset: ../data/physionet-mi.h5
 output: ../.runs/eegx-fixed-v1/in_domain/physionet-mi/pretrain
 stage: pretrain
 checkpoint: null
