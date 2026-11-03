@@ -34,7 +34,7 @@ def test_all_paper_configs_use_the_selected_gpu_recipe():
             assert (settings["microbatch"], settings["logical_batch"]) == (256, 256)
         else:
             assert (settings["microbatch"], settings["logical_batch"]) == (64, 64)
-    assert stages == {"pretrain": 5, "finetune": 8, "linear_probe": 4}
+    assert stages == {"pretrain": 9, "finetune": 12, "linear_probe": 4}
 
 
 def invoke(config, cwd):

@@ -207,6 +207,8 @@ def prepared_fixture(tmp_path, monkeypatch):
     configs = legacy / "source/configs"
     configs.mkdir(parents=True)
     for path in (repository / "configs").glob("*.yaml"):
+        if "-in-domain" in path.stem:
+            continue
         settings = yaml.safe_load(path.read_text())
         if "seeds" in settings:
             settings["seeds"] = [241, 242, 243, 244, 245]

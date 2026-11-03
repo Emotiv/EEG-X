@@ -47,12 +47,12 @@ The user waived proof of upstream non-rASR history. Reconstruct the same process
 | STEW workload | Separate pretraining and in-domain fine-tuning | 2 s | Native low/high TXT recordings; preserve participant identity across both conditions |
 | TUAB | Separate pretraining, in-domain fine-tuning, and transfer source | 10 s | Official normal/abnormal labels |
 | TUEV binary | Separate pretraining and in-domain fine-tuning | 2 s | Native classes 1/2/3 positive, 6 negative; exclude 4/5; native REC annotations are authoritative, with archive audits optional |
-| Crowdsourced | Cross-domain linear probing and fine-tuning from TUAB | 2 s | Eyes closed/open; retain author-backed recording ownership |
-| BCICIV-2a | Cross-domain linear probing and fine-tuning from TUAB | 2 s | Verified trial +2 to +4 seconds; feet 0, left hand 1, right hand 2, tongue 3 |
-| Kalunga SSVEP | Cross-domain linear probing and fine-tuning from TUAB | 2 s | Rest and 13/21/17 Hz; use the corrected author-backed event map |
-| PhysioNetMI | Cross-domain linear probing and fine-tuning from TUAB | 2 s | Native imagery EDFs, five classes including task-rest; verified catalog omits initial events and retains later short annotations. Use true 2-second crops at actual rates; complete subject scope by default |
+| Crowdsourced | In-domain pretraining/fine-tuning and cross-domain linear probing/fine-tuning from TUAB | 2 s | Eyes closed/open; retain author-backed recording ownership |
+| BCICIV-2a | In-domain pretraining/fine-tuning and cross-domain linear probing/fine-tuning from TUAB | 2 s | Verified trial +2 to +4 seconds; feet 0, left hand 1, right hand 2, tongue 3 |
+| Kalunga SSVEP | In-domain pretraining/fine-tuning and cross-domain linear probing/fine-tuning from TUAB | 2 s | Rest and 13/21/17 Hz; use the corrected author-backed event map |
+| PhysioNetMI | In-domain pretraining/fine-tuning and cross-domain linear probing/fine-tuning from TUAB | 2 s | Native imagery EDFs, five classes including task-rest; verified catalog omits initial events and retains later short annotations. Use true 2-second crops at actual rates; complete subject scope by default |
 
-Each in-domain model starts from scratch. Each cross-domain run starts independently from one shared TUAB encoder with the matching architecture. Source and target seeds need not match. Source pretraining uses a fixed subject-wise 80/20 split within official TUAB training only and selects minimum validation reconstruction loss.
+Each paired target uses identical prepared data and train/validation/test indices in both domains. The domain is explicit; a dataset name does not determine its domain. Each in-domain model starts from scratch. Each cross-domain run starts independently from one shared TUAB encoder with the matching architecture. Source and target seeds need not match. Source pretraining uses a fixed subject-wise 80/20 split within official TUAB training only and selects minimum validation reconstruction loss.
 
 New pretraining checkpoints record the source task, release hash and subject-split identity. In-domain fine-tuning requires the same prepared dataset and split as pretraining. Cross-domain linear probing and fine-tuning require the shared TUAB train/validation source. A mismatched or missing source identity stops evaluation before test access and result logging.
 
@@ -187,7 +187,7 @@ Balanced accuracy is mean recall across classes. Report the architecture, split,
 
 | Paper scope, subject to source availability | In-domain pretraining | In-domain fine-tuning | Shared TUAB source | Cross-domain linear probes | Cross-domain fine-tuning | Total |
 |---|---:|---:|---:|---:|---:|---:|
-| Primary architecture: depth 8, width 64 | 12 | 12 | 1 | 12 | 12 | 49 |
+| Primary architecture: depth 8, width 64 | 24 | 24 | 1 | 12 | 12 | 73 |
 
 These counts describe paper scope, not a scheduled job matrix or completed results. Missing data and budget limits remain explicit.
 

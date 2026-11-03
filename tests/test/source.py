@@ -109,7 +109,8 @@ def test_main_rejects_checkpoint_from_the_wrong_paper_source(tmp_path, stage, ta
     assert trained.returncode == 0, trained.stdout + trained.stderr
     output = tmp_path / "evaluation"
     completed = invoke(
-        config, target, output, stage=stage, checkpoint=tmp_path / "pretrain/training/best.pth"
+        config, target, output, stage=stage, checkpoint=tmp_path / "pretrain/training/best.pth",
+        wandb={"enabled": False, "domain": "cross_domain" if task == "crowdsourced" else "in_domain"}
     )
     assert completed.returncode != 0, "A mismatched source checkpoint was accepted"
     assert error in completed.stderr
@@ -139,6 +140,7 @@ def test_main_accepts_the_matching_paper_source(tmp_path, source_task, target_ta
         output,
         stage=stage,
         checkpoint=tmp_path / "pretrain/training" / ("best.pth"),
+        wandb={"enabled": False, "domain": "cross_domain" if source_task == "tuab" else "in_domain"},
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     result = json.loads((output / "training/result.json").read_text())
@@ -154,6 +156,7 @@ def test_main_accepts_the_matching_paper_source(tmp_path, source_task, target_ta
         stage=stage,
         checkpoint=tmp_path / "pretrain/training/best.pth",
         purpose="paper",
+        wandb={"enabled": False, "domain": "cross_domain" if source_task == "tuab" else "in_domain"},
     )
     assert rejected.returncode != 0
     assert "checkpoint from verified paper pretraining" in rejected.stderr
@@ -244,6 +247,7 @@ def test_tuab_source_encoder_is_shared_by_target_seeds_in_both_downstream_modes(
             stage=stage,
             checkpoint=checkpoint,
             seeds=[242, 243],
+            wandb={"enabled": False, "domain": "cross_domain"},
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
         for seed in (242, 243):
@@ -274,3 +278,35 @@ def test_checkpoint_contract_detects_an_actual_triton_runtime_change(monkeypatch
     after = software_contract()
     assert before != after
     assert after["triton"] == "999.0.0"
+
+
+def test_same_target_supports_both_domains_with_identical_saved_membership(tmp_path):
+    target = dataset(tmp_path / "target", "crowdsourced")
+    source = dataset(tmp_path / "source", "tuab")
+    config = tmp_path / "run.yaml"
+    for name, data, domain, extra in (
+        ("own", target, "in_domain", {}),
+        ("source", source, "cross_domain", {"pretraining_scope": "tuab_source"}),
+    ):
+        trained = invoke(config, data, tmp_path / name, **extra,
+                         wandb={"enabled": False, "domain": domain})
+        assert trained.returncode == 0, trained.stdout + trained.stderr
+    memberships = []
+    for domain, parent in (("in_domain", "own"), ("cross_domain", "source")):
+        output = tmp_path / domain
+        completed = invoke(
+            config, target, output, stage="finetune", split_seed=241,
+            checkpoint=tmp_path / parent / "training/best.pth",
+            wandb={"enabled": False, "domain": domain},
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        memberships.append(json.loads((output / "split.json").read_text()))
+    assert memberships[0]["fingerprint"] == memberships[1]["fingerprint"]
+    assert memberships[0]["subjects"] == memberships[1]["subjects"]
+    for domain, wrong_parent in (("in_domain", "source"), ("cross_domain", "own")):
+        rejected = invoke(
+            config, target, tmp_path / (domain + "-wrong"), stage="finetune", split_seed=241,
+            checkpoint=tmp_path / wrong_parent / "training/best.pth",
+            wandb={"enabled": False, "domain": domain},
+        )
+        assert rejected.returncode != 0

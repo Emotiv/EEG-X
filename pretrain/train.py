@@ -160,6 +160,9 @@ def resolve_run_config(settings, metadata):
             **supplied,
             "input_samples": metadata["window_samples"],
             "purpose": f"{settings['purpose']}_{stage}",
+            "domain": settings.get("wandb", {}).get("domain") or (
+                "cross_domain" if settings.get("pretraining_scope") == "tuab_source" else "in_domain"
+            ),
         }
     )
 

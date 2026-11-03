@@ -32,11 +32,11 @@ def test_fresh_queue_has_all_tasks_and_only_new_checkpoint_dependencies(tmp_path
     validate(manifest, root)
     tasks = manifest['tasks']
     assert Counter((t['domain'], t['stage']) for t in tasks) == {
-        ('in_domain', 'pretrain'): 12, ('in_domain', 'finetune'): 12,
+        ('in_domain', 'pretrain'): 24, ('in_domain', 'finetune'): 24,
         ('cross_domain', 'pretrain'): 1, ('cross_domain', 'linear_probe'): 12,
         ('cross_domain', 'finetune'): 12,
     }
-    assert Counter(t['gpu'] for t in tasks) == {0: 25, 1: 24}
+    assert Counter(t['gpu'] for t in tasks) == {0: 37, 1: 36}
     for task in tasks:
         config = read_config(task['config'])
         assert config['resume'] is None

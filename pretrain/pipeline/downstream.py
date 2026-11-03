@@ -8,15 +8,12 @@ from pretrain.pipeline.checkpoint import dataset_identity, set_seed, stream_seed
 from pretrain.models.factory import Classifier, create_model, resolve_model_config
 
 
-TRANSFER_TASKS = {"crowdsourced", "bciciv_2a", "kalunga", "physionet_mi"}
-
-
 def validate_pretraining_model(payload, config, *, target_task=None):
     """A selected encoder must use the requested model and training seed."""
     expected = resolve_model_config(config)
     pretrained = payload["config"]
     keys = ("model", "depth", "width", "heads")
-    if target_task not in TRANSFER_TASKS:
+    if config.get("domain", "in_domain") == "in_domain":
         keys += ("seed",)
     if any(pretrained.get(key) != expected.get(key) for key in keys):
         raise ValueError("The pretraining checkpoint must match the configured seed and model")
@@ -41,7 +38,7 @@ def validate_pretraining_source(payload, config, manifest, *, mode):
         and payload["contract"]["config"].get("purpose") != "paper_pretrain"
     ):
         raise ValueError("Paper evaluation requires a checkpoint from verified paper pretraining")
-    transfer = manifest["task"] in TRANSFER_TASKS
+    transfer = config.get("domain", "in_domain") == "cross_domain"
     if transfer:
         if source["task"] != "tuab" or source.get("scope") != "tuab_source":
             raise ValueError("Cross-domain evaluation requires the shared TUAB source checkpoint")

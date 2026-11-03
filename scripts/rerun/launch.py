@@ -33,8 +33,12 @@ def validate(manifest, root):
     if len(records) != expected_tasks or len(manifest['tasks']) != expected_tasks:
         raise ValueError('Task count differs from the frozen configuration matrix')
     protocol = manifest.get('protocol')
+    if manifest.get('study'):
+        from scripts.rerun.study import validate_study
+
+        validate_study(manifest)
     if protocol:
-        if expected_tasks != protocol['expected_runs']:
+        if not manifest.get('study') and expected_tasks != protocol['expected_runs']:
             raise ValueError('Task count differs from the versioned protocol')
         from pretrain.pipeline.dataset import DatasetReference, read_metadata
         checked_data = {}
@@ -172,18 +176,28 @@ def run(path, *, validate_only=False):
         pinned = json.loads(state_path.read_text()).get('placements', {}) if state_path.exists() else {}
         live = {}
         started = time.time()
+        phase = 'waiting_previous' if manifest.get('previous_queue') else 'running'
         (root / 'logs').mkdir(exist_ok=True)
 
         def save():
             atomic_json(root / 'queue-state.json', {
                 'pid': os.getpid(), 'started_utc': started, 'updated_utc': time.time(),
                 'stop_requested': stopped, 'placements': pinned, 'status': status, 'counts': dict(Counter(status.values())),
+                'phase': phase,
                 'running': {t['id']: {'pid': p.pid, 'gpu': t['gpu']}
                             for p, t, log in live.values()},
             })
 
         save()
         try:
+            if manifest.get('previous_queue'):
+                from scripts.rerun.study import wait_for_previous
+
+                print('WAIT for the original queue to finish before supplemental GPU admission', flush=True)
+                if not wait_for_previous(manifest, lambda: stopped):
+                    stopped = True
+                phase = 'running'
+                save()
             while True:
                 if stopped:
                     for fd in live:

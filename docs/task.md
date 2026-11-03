@@ -1,6 +1,6 @@
 # EEG-X fixed-split rerun
 
-This protocol supersedes the archived multi-split protocol. The agreed model is the original EEG-X recipe from `quoc-emotiv/eegx-bs256`, not an EEG-X2 or normalized SoftDiCT research variant. The machine-readable authority is `reproduction/eegx-fixed-v1/protocol.json`.
+This protocol supersedes the archived multi-split protocol. The agreed model is the original EEG-X recipe from `quoc-emotiv/eegx-bs256`, not an EEG-X2 or normalized SoftDiCT research variant. The data authority is `reproduction/eegx-fixed-v1/protocol.json`; the paired experiment matrix is `reproduction/eegx-fixed-v1/study.json`. The historical data protocol keeps its original run-count field for provenance; the study defines the current execution count.
 
 | Setting | Agreed value |
 |---|---|
@@ -30,12 +30,14 @@ STEW and DREAMER splits are test-informed exploratory choices. Their new results
 
 | Tracked stage | Runs |
 |---|---:|
-| In-domain pretraining | 12 |
-| In-domain fine-tuning | 12 |
+| In-domain pretraining | 24 |
+| In-domain fine-tuning | 24 |
 | Shared TUAB source pretraining | 1 |
 | Cross-domain linear probes | 12 |
 | Cross-domain fine-tuning | 12 |
-| Total | 49 |
+| Total | 73 |
+
+All eight datasets have in-domain pretraining and fine-tuning. Crowdsourced, BCICIV-2a, Kalunga and PhysioNetMI also have cross-domain probes and fine-tuning. Each paired dataset uses the exact same HDF5 file and saved train/validation/test bank in both domains. Only the encoder pretraining source changes.
 
 In-domain probe fits stay inside pretraining runs. Cross-domain probes and fine-tuning start independently from the same selected TUAB checkpoint.
 
@@ -44,3 +46,7 @@ Preserve the old HDF5 release. Publish independent, self-contained files in a ne
 Each release includes a portable manifest, full file hashes, parent release identities, subject assignments, indices, selection evidence and preprocessing metadata. Each experiment saves resolved YAML, split identity, training seed, code/environment hashes, checkpoints, predictions and metrics. A copied release must load without the old folder or raw files.
 
 Implementation order: update code and data; run meaningful CPU and GPU checks; review Standards and Spec; fix findings; commit; freeze the committed source and generated queue; validate dependencies; launch the real experiments. Preserve unrelated GPU jobs and all historical ledgers. Fresh per-device meters have no time cap. Admission uses measured peak memory and headroom.
+
+The original queue keeps ownership of its existing tasks and outputs. A supplement contains only missing in-domain tasks; its manifest records and verifies the original queue evidence. Do not duplicate source pretraining or repeat existing runs. Both queues retain their own frozen code and checkpoint contracts.
+
+Supplemental GPU dispatch waits for the original queue to finish successfully. The immutable old launcher cannot coordinate reservations with a new launcher. The waiting supplement owns no training processes or GPU allocations. A failed original queue leaves the supplement unstarted.

@@ -59,6 +59,9 @@ def resolve_training_config(config):
         }
     )
     resolved.setdefault("split_seed", resolved["seed"])
+    resolved.setdefault("domain", "in_domain")
+    if resolved["domain"] not in {"in_domain", "cross_domain"}:
+        raise ValueError("Unknown experiment domain")
     for name, defaults in (("optimizer", DEFAULT_OPTIMIZER), ("scheduler", DEFAULT_SCHEDULER)):
         supplied = resolved.get(name, {})
         if not isinstance(supplied, dict) or supplied.keys() - defaults.keys():

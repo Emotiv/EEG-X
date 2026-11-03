@@ -81,7 +81,7 @@ def build_tasks(configs, root, slots, data_root, *, flexible=False, protocol=Non
     return manifest
 
 
-def prepare(root, slots, data_root, capacity_paths=(), memory_profile=None):
+def prepare(root, slots, data_root, capacity_paths=(), memory_profile=None, previous=None):
     from pretrain.pipeline.budget import Budget
     from pretrain.pipeline.checkpoint import software_contract
     from pretrain.train import read_config
@@ -123,13 +123,17 @@ def prepare(root, slots, data_root, capacity_paths=(), memory_profile=None):
                 'budget': str(root / 'usage/gpu0'), 'tasks': [], 'config_hashes': {}}
     configs = {p.stem: read_config(p) for p in sorted((ROOT / 'configs').glob('*.yaml'))}
     protocol = json.loads((ROOT / 'reproduction/eegx-fixed-v1/protocol.json').read_text())
+    study = json.loads((ROOT / 'reproduction/eegx-fixed-v1/study.json').read_text())
     release = json.loads((data_root / 'manifest.json').read_text())
     if release['protocol'] != protocol:
         raise ValueError('Prepared release belongs to a different scientific protocol')
     manifest['protocol'] = protocol
     manifest['data_release'] = release
     manifest.update(build_tasks(configs, root, slots, data_root, flexible=bool(memory_profile),
-                                protocol=protocol))
+                                protocol=study))
+    from scripts.rerun.study import retain_new_tasks
+
+    retain_new_tasks(manifest, study, previous)
     if memory_profile:
         from scripts.rerun.memory import measured_case, validate_hardware
 
@@ -155,6 +159,7 @@ def prepare(root, slots, data_root, capacity_paths=(), memory_profile=None):
         str(p.relative_to(source)): sha256(p)
         for p in [runtime, task_runtime, source / 'scripts/paper/process.py',
                   source / 'scripts/paper/child.py', source / 'scripts/rerun/memory.py',
+                  source / 'scripts/rerun/study.py',
                   source / 'source-revision.json']}
     (root / 'capacity.json').write_text(json.dumps(capacities, indent=2) + '\n')
     (root / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
@@ -177,5 +182,6 @@ if __name__ == '__main__':
     parser.add_argument('--data-root', type=Path, required=True)
     parser.add_argument('--capacity', type=Path, nargs=2, default=[])
     parser.add_argument('--memory-profile', type=Path)
+    parser.add_argument('--previous', type=Path, help='Preserve the existing queue; add missing tasks')
     args = parser.parse_args()
-    prepare(args.root, args.slots, args.data_root, args.capacity, args.memory_profile)
+    prepare(args.root, args.slots, args.data_root, args.capacity, args.memory_profile, args.previous)

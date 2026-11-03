@@ -8,9 +8,9 @@ This release uses the original hybrid raw/STFT EEG-X model. It does not use the 
 | Training seeds | 241, 242, 243 |
 | Pretraining | Maximum 100 epochs; microbatch and global batch 256 |
 | Probe and fine-tuning | Maximum 20 epochs; batch 64; patience 5 |
-| Tracked experiments | 49 |
+| Tracked experiments | 73 |
 
-All training seeds use the same train, validation and test memberships. They change initialization, shuffling, dropout and masks. Checkpoints use validation metrics only.
+All cross-domain targets also have in-domain runs. Both domains use exactly the same HDF5 file and train, validation and test indices for a target. In-domain pretraining uses that target training set; cross-domain pretraining uses TUAB training subjects. All training seeds use the same train, validation and test memberships. They change initialization, shuffling, dropout and masks. Checkpoints use validation metrics only.
 
 | Dataset | Split |
 |---|---|
@@ -39,3 +39,7 @@ Install the pinned environment with `uv sync --locked`. Dataset YAMLs live in `c
 The queue freezes committed source, generated YAMLs and their hashes. Its output folder contains the source revision, software contract, task dependencies and placements, local checkpoints, predictions, metrics and W&B run IDs. Copy that folder with the data bundle to reproduce or inspect an experiment. The `source/` snapshot runs independently of later working-tree edits.
 
 W&B project `quoc-emotiv/eegx` keeps one run per tracked experiment. Group completed runs by domain, stage, task, model size and recipe to view seed means. Diagnostic probe curves stay in their pretraining runs.
+
+The paired study adds missing tasks without changing the original queue. Use `scripts/rerun/prepare.py --previous <original-manifest>` to prepare only the missing tasks. The study matrix is `study.json`; the original data protocol and release remain unchanged. Each queue retains its frozen source and selected checkpoints.
+
+The supplement waits for successful completion of the original queue before GPU admission. This prevents independent launchers from reserving the same free memory. It creates no extra W&B runs while waiting.
