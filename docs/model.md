@@ -63,9 +63,11 @@ The fused GPU implementation combines convolution, softmax and temporal reductio
 
 ### High-level model code
 
-This pseudocode shows the current pretraining path. Selection and restoration helpers preserve each sample's original patch order. `mask` is true for hidden patches; the auxiliary weight comes from the dictionary settings above.
+This pseudocode shows the current pretraining path. Selection and restoration helpers preserve each sample's original patch order. `mask` is true for hidden patches; the current auxiliary weight is fixed as shown below.
 
 ```python
+auxiliary_weight = 1.0  # Fixed current configuration, not learned.
+
 def forward(eeg, channel_ids, mask, auxiliary_weight):
     # Tokenize each patch independently, then add spatial/time positions.
     patches = patchify(eeg)
@@ -103,7 +105,7 @@ clip_grad_norm_(model.parameters(), max_norm=gradient_clip)
 optimizer.step()
 ```
 
-The waveform loss has an implicit unit weight. The auxiliary weight multiplies the dictionary MSE directly; there is no learned weighting or automatic scale correction. Validation logs both terms, but checkpoint selection uses raw waveform MSE.
+Both loss terms use the fixed unit weight shown in the dictionary settings table. Thus, `loss = raw_loss + dict_loss`. The auxiliary weight multiplies the dictionary MSE directly; there is no learned weighting or automatic scale correction. Validation logs both terms, but checkpoint selection uses raw waveform MSE.
 
 ## Training
 
