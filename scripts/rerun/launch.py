@@ -55,6 +55,10 @@ def validate(manifest, root):
                     or config['split_seed'] != protocol['datasets'][name]['split_seed']
                     or config['seed'] not in protocol['training_seeds']):
                 raise ValueError('Task does not use its frozen data release, split and training seed')
+    if manifest.get('recovery'):
+        from scripts.rerun.recovery import validate_recovery
+
+        validate_recovery(manifest)
     for task in manifest['tasks']:
         baseline = read_config(task['config'])
         for placement in task.get('placements', []):
@@ -65,6 +69,8 @@ def validate(manifest, root):
     placements = manifest['tasks'] + [dict(task, **placement)
         for task in manifest['tasks'] for placement in task.get('placements', [])]
     for task in placements:
+        if task.get('completed_output') and not manifest.get('recovery'):
+            raise ValueError('Completed output references require verified recovery evidence')
         path = Path(task['config'])
         if hashlib.sha256(path.read_bytes()).hexdigest() != manifest['config_hashes'][str(path)]:
             raise ValueError(f'Generated configuration changed: {path.name}')
@@ -83,8 +89,9 @@ def validate(manifest, root):
                 or str(output) != config['output'] or task['gpu'] not in manifest['devices']
                 or config['device'] != f'cuda:{task["gpu"]}'
                 or config['concurrent_gpu_runs'] != manifest['slots_per_gpu']
-                or config['budget'] != str(root / f'usage/gpu{task["gpu"]}')
-                or config['resume'] is not None
+                or config['budget'] != str(Path(manifest.get('budget', root / 'usage/gpu0')).parent
+                                           / f'gpu{task["gpu"]}')
+                or (config['resume'] is not None and not manifest.get('recovery'))
                 or config['wandb']['project'] != 'eegx'):
             raise ValueError('Task paths, device, concurrency or fresh-run identity are inconsistent')
         if any(d not in records for d in task['depends']):
@@ -96,7 +103,7 @@ def validate(manifest, root):
             if len(task['depends']) != 1:
                 raise ValueError('Downstream tasks require one selected pretraining checkpoint')
             parent = records[task['depends'][0]]
-            expected = str(Path(parent['output']) / 'training/best.pth')
+            expected = str(Path(parent.get('completed_output', parent['output'])) / 'training/best.pth')
             if config['checkpoint'] != expected or parent['stage'] != 'pretrain':
                 raise ValueError('Downstream checkpoint must belong to its declared dependency')
         identities.add(task['id'])
@@ -137,6 +144,19 @@ def drain_training(manifest, task):
 
 
 def run(path, *, validate_only=False):
+    from contextlib import nullcontext
+
+    manifest = json.loads(Path(path).read_text())
+    ownership = nullcontext()
+    if manifest.get('recovery'):
+        from scripts.rerun.recovery import recovery_guard
+
+        ownership = recovery_guard(manifest)
+    with ownership:
+        return _run(path, validate_only=validate_only)
+
+
+def _run(path, *, validate_only=False):
     from scripts.paper.process import open_process, signal_process
 
     path = Path(path).resolve()
@@ -147,6 +167,25 @@ def run(path, *, validate_only=False):
         from scripts.rerun.memory import validate_hardware
 
         validate_hardware(manifest['memory_profile'])
+    if manifest.get('recovery'):
+        from scripts.rerun.recovery import checkpoint_preflight
+        from pretrain.train import read_config
+
+        checks = {}
+        for task in manifest['tasks']:
+            settings = read_config(task['config'])
+            if task.get('completed_output'):
+                sys.path.insert(0, str(ROOT / 'scripts/paper'))
+                from task import check_complete, verify_finalization
+
+                original = manifest['recovery']['tasks'][task['id']]['config']
+                original = read_config(original)
+                check_complete(Path(task['completed_output']), original)
+                verify_finalization(Path(task['completed_output']), original)
+                checks[task['id']] = {'status': 'preserved_complete'}
+            elif settings.get('resume'):
+                checks[task['id']] = checkpoint_preflight(settings)
+        (root / 'resume-preflight.json').write_text(json.dumps(checks, indent=2) + '\n')
     if validate_only:
         print(json.dumps({'status': 'validated', 'tasks': len(manifest['tasks']),
                           'slots_per_gpu': manifest['slots_per_gpu']}), flush=True)
@@ -171,7 +210,8 @@ def run(path, *, validate_only=False):
             stopped = True
 
         previous = {s: signal.signal(s, stop) for s in (signal.SIGTERM, signal.SIGINT)}
-        status = {t['id']: 'pending' for t in manifest['tasks']}
+        status = {t['id']: 'complete' if t.get('completed_output') else 'pending'
+                  for t in manifest['tasks']}
         state_path = root / 'queue-state.json'
         pinned = json.loads(state_path.read_text()).get('placements', {}) if state_path.exists() else {}
         live = {}

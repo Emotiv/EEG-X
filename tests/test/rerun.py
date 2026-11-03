@@ -69,6 +69,13 @@ def test_unknown_dependency_is_rejected_before_any_task_runs(tmp_path):
         validate(manifest, root)
 
 
+def test_fresh_queue_cannot_skip_work_with_an_unverified_completion_reference(tmp_path):
+    root, manifest = generated(tmp_path)
+    manifest['tasks'][0]['completed_output'] = '/unverified/output'
+    with pytest.raises(ValueError, match='verified recovery evidence'):
+        validate(manifest, root)
+
+
 def test_slot_drain_waits_for_recorded_training_child(tmp_path):
     import concurrent.futures
     import hashlib
