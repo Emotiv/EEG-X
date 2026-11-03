@@ -52,8 +52,8 @@ def test_admission_credits_only_usage_observed_on_both_sides_of_free_memory_snap
     monkeypatch.setattr(run.subprocess, 'check_output', lambda *a, **k: '0, GPU-a, 100\n')
     owner = Mock(pid=10)
     free = run.available({'devices': [0], 'headroom_mib': 10},
-                         {'reservations': {'pretrain': 80}},
-                         {1: (owner, {'stage': 'pretrain'}, 0, None)})
+                         {'reservations': {'toy/pretrain': 80}},
+                         {1: (owner, {'stage': 'pretrain', 'dataset': 'toy'}, 0, None)})
     assert free == {0: 50}
 
 
@@ -80,12 +80,13 @@ if config.get('fail'): sys.exit(7)
         if parent:
             settings['checkpoint'] = str(tmp_path / parent / 'training/best.pth')
         config.write_text(yaml.safe_dump(settings))
-        tasks.append({'id': name, 'stage': name, 'domain': 'in_domain', 'depends': parent,
+        tasks.append({'id': name, 'stage': name, 'domain': 'in_domain', 'depends': parent, 'dataset': 'toy',
                       'output': settings['output'], 'configs': {'0': str(config)}})
     manifest = {'tasks': tasks, 'devices': [0], 'python': str(executable)}
     path = tmp_path / 'manifest.json'
     path.write_text(json.dumps(manifest))
-    monkeypatch.setattr(run, 'validate', lambda *a: (manifest, {'reservations': {'pretrain': 1, 'finetune': 1}}))
+    monkeypatch.setattr(run, 'validate', lambda *a: (manifest,
+                         {'reservations': {'toy/pretrain': 1, 'toy/finetune': 1}}))
     monkeypatch.setattr(run, 'available', lambda *a: {0: 1})
     monkeypatch.setattr('pretrain.train.read_config', lambda p: yaml.safe_load(Path(p).read_text()))
     assert run.run(path) == int(fail)

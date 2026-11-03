@@ -71,6 +71,7 @@ def validate(path):
                 or config['split_seed'] != release['protocol']['datasets'][name]['split_seed']):
             raise ValueError('Data release or fixed split changed')
         records = [r for r in capacity['records'] if r['stage'] == task['stage']
+                   and Path(r['config']['dataset']).stem == task['dataset']
                    and memory_contract(r['config']) == memory_contract(config)]
         if (not records or view['window_samples'] > max(r['samples'] for r in records)
                 or len(view['channels']) > max(r['channels'] for r in records)
@@ -90,7 +91,7 @@ def validate(path):
 
 
 def available(manifest, capacity, live):
-    from tools.queue.capacity import process_memory
+    from tools.queue.capacity import process_memory, reservation
 
     before = process_memory()
     output = subprocess.check_output([
@@ -101,7 +102,7 @@ def available(manifest, capacity, live):
     result = {}
     for gpu in manifest['devices']:
         uuid, free = states[gpu]
-        outstanding = sum(max(0, capacity['reservations'][task['stage']] -
+        outstanding = sum(max(0, reservation(capacity, task) -
             min(before.get((uuid, process.pid), 0), after.get((uuid, process.pid), 0)))
             for process, task, device, log in live.values() if device == gpu)
         result[gpu] = free - manifest['headroom_mib'] - outstanding
@@ -116,6 +117,7 @@ def complete(task):
 def run(path):
     from pretrain.metadata import atomic_json
     from pretrain.train import read_config
+    from tools.queue.capacity import reservation
 
     path = Path(path).resolve()
     root = path.parent
@@ -160,8 +162,8 @@ def run(path):
                             continue
                         if task['depends'] and parent != 'complete':
                             continue
-                        reservation = capacity['reservations'][task['stage']]
-                        choices = [gpu for gpu in manifest['devices'] if free[gpu] >= reservation]
+                        required = reservation(capacity, task)
+                        choices = [gpu for gpu in manifest['devices'] if free[gpu] >= required]
                         if not choices:
                             continue
                         gpu = max(choices, key=free.get)
@@ -180,7 +182,7 @@ def run(path):
                             raise
                         live[fd] = process, task, gpu, log
                         status[task['id']] = 'running'
-                        free[gpu] -= reservation
+                        free[gpu] -= required
                         print(f'START GPU {gpu} {task["id"]}', flush=True)
                 save()
                 if not live:

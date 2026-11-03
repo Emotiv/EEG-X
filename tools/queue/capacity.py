@@ -29,6 +29,10 @@ def feasible(capacity, manifest):
         raise ValueError('Measured memory reservation cannot fit on the configured GPUs')
 
 
+def reservation(capacity, task):
+    return capacity['reservations'][task['dataset'] + '/' + task['stage']]
+
+
 def hardware():
     output = subprocess.check_output([
         'nvidia-smi', '--query-gpu=index,uuid,name,memory.total',
@@ -140,27 +144,30 @@ def profile(path):
     path = Path(path).resolve()
     manifest = json.loads(path.read_text())
     root = path.parent / 'capacity'
-    root.mkdir(exist_ok=False)
+    root.mkdir(exist_ok=True)
     records = []
-    for dataset in ('tuab', 'physionet-mi'):
-        for stage in ('pretrain', 'finetune', 'linear_probe'):
-            choices = [t for t in manifest['tasks'] if t['dataset'] == dataset and t['stage'] == stage]
-            if not choices:
-                continue
-            task = choices[0]
-            gpu = len(records) % len(manifest['devices'])
-            target = root / f'{dataset}--{stage}.json'
+    cases = {(t['dataset'], t['stage']) for t in manifest['tasks']}
+    for dataset, stage in sorted(cases):
+        task = next(t for t in manifest['tasks'] if (t['dataset'], t['stage']) == (dataset, stage))
+        gpu = manifest['devices'][len(records) % len(manifest['devices'])]
+        target = root / f'{dataset}--{stage}.json'
+        if not target.exists():
             subprocess.run([manifest['python'], str(Path(__file__).resolve()), '--worker',
                             task['configs'][str(gpu)], '--gpu', str(gpu), '--output', str(target),
                             '--parent', str(os.getpid())],
                            check=True, env={**os.environ, 'OMP_NUM_THREADS': '2',
                                             'MKL_NUM_THREADS': '2', 'OPENBLAS_NUM_THREADS': '2'})
-            records.append(json.loads(target.read_text()))
+        record = json.loads(target.read_text())
+        from pretrain.train import read_config
+
+        if memory_contract(record['config']) != memory_contract(read_config(task['configs'][str(gpu)])):
+            raise ValueError('Cached capacity measurement belongs to another configuration')
+        records.append(record)
     if any(r['software'] != manifest['software'] for r in records) or software_contract() != manifest['software']:
         raise ValueError('Training source changed during capacity measurement')
     result = {'software': manifest['software'], 'hardware': hardware(), 'records': records,
-              'reservations': {stage: max(r['reservation_mib'] for r in records if r['stage'] == stage)
-                               for stage in ('pretrain', 'finetune', 'linear_probe')}}
+              'reservations': {Path(r['config']['dataset']).stem + '/' + r['stage']: r['reservation_mib']
+                               for r in records}}
     feasible(result, manifest)
     (path.parent / 'capacity.json').write_text(json.dumps(result, indent=2) + '\n')
     from tools.queue.prepare import digest
