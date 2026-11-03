@@ -61,3 +61,34 @@ def test_launcher_stops_before_downstream_work_when_a_stage_fails(tmp_path):
     result, paths = launch(tmp_path, fail_config="stew.yaml")
     assert result.returncode == 7
     assert [p.stem for p in paths] == ["eegx", "dreamer-arousal-finetune", "stew"]
+
+
+def test_public_study_preserves_paired_data_splits_and_training_seeds():
+    study = json.loads((ROOT / "data/study.json").read_text())
+    protocol = json.loads((ROOT / "data/protocol.json").read_text())
+    expected = {
+        (domain, task, stage, seed)
+        for domain, stages in (("in_domain", ("pretrain", "finetune")),
+                               ("cross_domain", ("linear_probe", "finetune")))
+        for task in study[domain]
+        for stage in stages
+        for seed in study["training_seeds"]
+    }
+    expected.add(("cross_domain", study["source"]["task"], "pretrain", study["source"]["seed"]))
+    actual = set()
+    source_dataset = (ROOT / "data/tuab.h5").resolve()
+    for path in (ROOT / "configs").glob("*.yaml"):
+        config = yaml.safe_load(path.read_text())
+        dataset = (path.parent / config["dataset"]).resolve()
+        task = Path(config["dataset"]).stem
+        domain, stage = config["wandb"]["domain"], config["stage"]
+        assert dataset == (ROOT / "data" / f"{task}.h5").resolve()
+        assert config["split_seed"] == protocol["datasets"][task.replace("-", "_")]["split_seed"]
+        if domain == "cross_domain" and stage != "pretrain":
+            assert (path.parent / config["source_dataset"]).resolve() == source_dataset
+        for seed in config.get("seeds", [config.get("seed")]):
+            identity = (domain, task, stage, seed)
+            assert identity not in actual
+            actual.add(identity)
+    assert actual == expected
+    assert len(actual) == study["expected_runs"]

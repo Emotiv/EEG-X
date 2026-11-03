@@ -85,8 +85,9 @@ def test_early_loader_exit_drains_only_inflight_batches(tmp_path):
     root = Path(__file__).resolve().parents[3]
     env = {**os.environ, "PYTHONPATH": str(root), "CUDA_VISIBLE_DEVICES": "",
            "OMP_NUM_THREADS": "2", "MKL_NUM_THREADS": "2", "OPENBLAS_NUM_THREADS": "2"}
+    # Include interpreter startup for the parent and six spawned workers.
     completed = subprocess.run([sys.executable, str(script), str(source), str(trace)],
-                               cwd=root, env=env, capture_output=True, text=True, timeout=45)
+                               cwd=root, env=env, capture_output=True, text=True, timeout=120)
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "completed" in completed.stdout
     assert "terminate called without an active exception" not in completed.stderr
