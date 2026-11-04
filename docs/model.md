@@ -22,10 +22,12 @@ Recorded GPU attention backends confirm FlashAttention. Classification uses the 
 
 The larger comparison keeps the same architecture and training recipe while increasing embedding width. Parameter counts below are measured from this implementation and do not match the paper's reported totals.
 
-| W&B size | Encoder layers | Embedding width | Encoder parameters | Total pretraining parameters |
-|---|---:|---:|---:|---:|
-| `d8w64` | 8 | 64 | 402,192 | 653,626 |
-| `d8w512` | 8 | 512 | 25,237,520 | 41,011,258 |
+| W&B size | Encoder layers | Embedding width | Encoder parameters | Total pretraining parameters | Binary classifier parameters |
+|---|---:|---:|---:|---:|---:|
+| `d8w64` | 8 | 64 | 402,192 | 653,626 | 402,386 |
+| `d8w128` | 8 | 128 | 1,590,800 | 2,585,146 | 1,591,186 |
+| `d8w256` | 8 | 256 | 6,327,312 | 10,282,042 | 6,328,082 |
+| `d8w512` | 8 | 512 | 25,237,520 | 41,011,258 | 25,239,058 |
 
 Group runs by `domain`, `stage`, `task_name` and `size` to average training seeds separately for each model size. Runs keep an unset W&B group string; `size` is a configuration field.
 
@@ -39,7 +41,7 @@ The model reconstructs the processed EEG waveform. Apply the same fixed, seeded 
 | Groups / filters per group | 8 / 32 |
 | Temperature / features per channel | 1.0 / 2,560 |
 | Auxiliary loss weight | 1.0 |
-| Dictionary random seed | 245, shared across training seeds |
+| Dictionary random seed | Defaults to the training seed when not explicitly configured; fixed within each run |
 
 Filters are zero-mean, unit-L2-normalized and fixed. Channels share filters but compete independently. Gradients flow through the predicted signal into the model.
 
@@ -181,3 +183,44 @@ Both loss terms use the fixed unit weight shown in the dictionary settings table
 | Linear probe | AdamW / 1e-3; frozen encoder, train-only feature scaler, CPU linear head | 64 / 64 | 20 |
 
 Pretraining selects minimum validation raw MSE. Fine-tuning and probes select maximum validation balanced accuracy. Embedded probes provide validation and diagnostic test trends; downstream final test evaluates the selected checkpoint once.
+
+## Computational cost
+
+These are nominal **dense-operation FLOP estimates**, verified against executed CPU reference forward/backward traces. They count matrix products in the tokenizer, attention, feed-forward layers, reconstruction head and SoftDiCT convolutions. Reference backends preserve the model equations while exposing the operations for counting.
+
+| Counting rule | Definition |
+|---|---|
+| Multiply-add | 2 FLOPs |
+| GFLOPs / TFLOPs | FLOPs divided by 10^9 / 10^12 |
+| Inference | Tokenizer, full encoder and binary head matrix products; one EEG window; pooling is excluded as a reduction |
+| Pretraining | Masked encoder, Predictor, decoder and reconstruction head, forward and backward; both dictionary branches included |
+| Dictionary training total | 4 convolution-equivalent passes: target forward, prediction forward, response recomputation and prediction input gradient |
+| Exclusions | FFT, bias additions, RMSNorm, activations, softmax, elementwise arithmetic, reductions, optimizer updates and data movement |
+| Epoch scope | One pass over saved training windows; validation and embedded probes excluded |
+
+The convention makes the counted scope explicit. These estimates do not represent complete instruction counts or hardware TFLOP/s, and cannot replace measured latency.
+
+| Input | Channels | Samples/window | Duration | Saved training windows |
+|---|---:|---:|---|---:|
+| STEW | 14 | 256 | 2 seconds at 128 Hz | 39,138 |
+| DREAMER arousal | 14 | 256 | 2 seconds at 128 Hz | 118,432 |
+| TUEV_Binary | 19 | 256 | 2 seconds at 128 Hz | 57,170 |
+
+STEW and DREAMER have the same inference count because their input shapes and class counts match. Their epoch costs differ because the training sets have different lengths.
+
+| Size | STEW / DREAMER inference GFLOPs/window | TUEV_Binary inference GFLOPs/window | STEW pretraining TFLOPs/epoch | DREAMER pretraining TFLOPs/epoch | TUEV_Binary pretraining TFLOPs/epoch |
+|---|---:|---:|---:|---:|---:|
+| `d8w64` | 0.114 | 0.168 | 44.97 | 136.07 | 90.40 |
+| `d8w128` | 0.405 | 0.575 | 72.70 | 219.99 | 146.62 |
+| `d8w256` | 1.515 | 2.106 | 179.87 | 544.29 | 361.58 |
+| `d8w512` | 5.848 | 8.037 | 601.05 | 1,818.78 | 1,201.54 |
+
+Epoch estimates multiply the traced per-window training count by the saved training-window count. All displayed configurations were verified against reference execution; batch scaling was also checked. SoftDiCT's dense cost stays fixed when only embedding width changes, so pretraining compute grows more slowly than parameter count for the smaller models.
+
+Reproduce the estimates without GPU allocation:
+
+```sh
+python tools/queue/flops.py --verify --output .runs/reports/eegx-dense-flops.json
+```
+
+For the paper, report these as dense FLOP estimates with the exclusions above. Measure inference latency and training time separately on the same idle GPU, with fixed precision, inputs, batches, warm-up and repetitions. Define any inference-per-thousand metric as a count of EEG windows.
