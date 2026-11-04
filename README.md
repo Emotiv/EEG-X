@@ -106,6 +106,14 @@ The queue uses both GPUs as measured peak memory allows. W&B records the model
 `size` for grouping with the existing runs. Its model count is documented in
 [docs/model.md](docs/model.md).
 
+To run a subset, add `--datasets stew dreamer-arousal tuev-binary --domains in_domain`
+to preparation. `--devices 0` pins that queue to one GPU. Use a different GPU for
+an independent concurrent queue to avoid overlapping admission decisions.
+Capacity profiling accepts `--gpu 0` to measure both sizes on the same physical
+GPU when the installed GPUs match. Its inference timings use resident inputs
+under the current shared GPU load, so they are provisional rather than isolated
+speed comparisons.
+
 | Study rule | Value |
 |---|---|
 | Training seeds | 241, 242, 243; same subject split for every seed |

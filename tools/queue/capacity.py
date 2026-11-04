@@ -79,6 +79,7 @@ def worker(path, gpu, output):
     batch = default_collate([view[i] for i in range(min(config['microbatch'], len(view)))])
     eeg, ids, labels = batch['eeg'].cuda(), batch['channel_ids'].cuda(), batch['label'].cuda()
     reconstruction = create_model(config).cuda()
+    parameters = reconstruction.parameter_counts()
     stage = settings['stage']
     if stage == 'pretrain':
         model = reconstruction
@@ -127,40 +128,57 @@ def worker(path, gpu, output):
     reserved = torch.cuda.max_memory_reserved() / 2**20
     used = process_memory().get((state['uuid'], os.getpid()), 0)
     result = {'config': settings, 'software': software_contract(), 'gpu': gpu,
+              'gpu_uuid': state['uuid'], 'pretraining_parameter_counts': parameters,
+              'measured_model': type(model).__name__,
+              'measured_model_parameters': {
+                  'total': sum(p.numel() for p in model.parameters()),
+                  'trainable': sum(p.numel() for p in model.parameters() if p.requires_grad)},
               'stage': stage, 'channels': len(view.metadata['channels']),
               'samples': view.metadata['window_samples'], 'classes': len(view.metadata['classes']),
               'peak_reserved_mib': reserved,
               'reservation_mib': math.ceil(max(reserved * 1.2 + 1024, used + 1024)),
               'seconds_per_update': times, 'attention': attention_backends(model),
               'allocator_limit_mib': min(0.9 * total, limit)}
+    if stage == 'finetune':
+        from tools.queue.benchmark import inference
+
+        result['inference'] = inference(model, eeg, ids, config)
     Path(output).write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps({k: result[k] for k in ('stage', 'peak_reserved_mib', 'reservation_mib',
                                             'seconds_per_update')}), flush=True)
 
 
-def profile(path):
+def profile(path, measurement_gpu=None):
     from pretrain.pipeline.checkpoint import software_contract
 
     path = Path(path).resolve()
     manifest = json.loads(path.read_text())
+    devices = hardware()
+    if measurement_gpu is not None and (
+            str(measurement_gpu) not in {d['gpu'] for d in devices}
+            or len({d['name'] for d in devices}) != 1):
+        raise ValueError('A shared measurement GPU requires matching physical GPU models')
     root = path.parent / 'capacity'
     root.mkdir(exist_ok=True)
     records = []
     cases = {(t['dataset'], t['stage']) for t in manifest['tasks']}
     for dataset, stage in sorted(cases):
         task = next(t for t in manifest['tasks'] if (t['dataset'], t['stage']) == (dataset, stage))
-        gpu = manifest['devices'][len(records) % len(manifest['devices'])]
+        gpu = (manifest['devices'][len(records) % len(manifest['devices'])]
+               if measurement_gpu is None else measurement_gpu)
+        config_path = task['configs'].get(str(gpu), next(iter(task['configs'].values())))
         target = root / f'{dataset}--{stage}.json'
         if not target.exists():
             subprocess.run([manifest['python'], str(Path(__file__).resolve()), '--worker',
-                            task['configs'][str(gpu)], '--gpu', str(gpu), '--output', str(target),
+                            config_path, '--gpu', str(gpu), '--output', str(target),
                             '--parent', str(os.getpid())],
                            check=True, env={**os.environ, 'OMP_NUM_THREADS': '2',
                                             'MKL_NUM_THREADS': '2', 'OPENBLAS_NUM_THREADS': '2'})
         record = json.loads(target.read_text())
         from pretrain.train import read_config
 
-        if memory_contract(record['config']) != memory_contract(read_config(task['configs'][str(gpu)])):
+        if (memory_contract(record['config']) != memory_contract(read_config(config_path))
+                or (measurement_gpu is not None and record['gpu'] != measurement_gpu)):
             raise ValueError('Cached capacity measurement belongs to another configuration')
         records.append(record)
     if any(r['software'] != manifest['software'] for r in records) or software_contract() != manifest['software']:
@@ -190,4 +208,4 @@ if __name__ == '__main__':
         protect_parent(args.parent)
         worker(args.worker, args.gpu, args.output)
     else:
-        profile(args.manifest)
+        profile(args.manifest, args.gpu)
