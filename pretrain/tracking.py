@@ -49,10 +49,13 @@ def validate_settings(settings):
         "mode",
         "name",
         "domain",
+        "upload_checkpoints",
     }:
-        raise ValueError("wandb accepts enabled, project, entity, group, mode, name and domain")
+        raise ValueError("Unknown wandb setting")
     if type(settings.get("enabled", False)) is not bool:
         raise ValueError("wandb.enabled must be a boolean")
+    if type(settings.get("upload_checkpoints", False)) is not bool:
+        raise ValueError("wandb.upload_checkpoints must be a boolean")
     if settings.get("mode", "online") not in {"online", "offline", "disabled"}:
         raise ValueError("wandb.mode must be online, offline or disabled")
     if settings.get("domain") is not None and settings["domain"] not in {
@@ -70,9 +73,10 @@ def validate_settings(settings):
 
 
 class Tracker:
-    def __init__(self, run, *, optimizer_name="AdamW"):
+    def __init__(self, run, *, optimizer_name="AdamW", upload_checkpoints=False):
         self.run = run
         self.optimizer_name = optimizer_name
+        self.upload_checkpoints = upload_checkpoints
         self.epoch = None
         self.global_step = 0
         self._final_test_logged = False
@@ -112,7 +116,10 @@ class Tracker:
         self.summary(values)
 
     def checkpoint(self, path, *, metadata):
-        """Upload the selected checkpoint with its validation-only selection record."""
+        """Upload a selected checkpoint only when cloud model storage is enabled."""
+        if not self.upload_checkpoints:
+            self.summary({"selected/checkpoint_storage": "local_only"})
+            return
         import wandb
 
         path = Path(path)
@@ -234,7 +241,8 @@ def track(settings, config, metadata, output, *, stage, resume=None):
     run.define_metric("epoch", step_metric="trainer/global_step")
     run.define_metric("lr-AdamW", step_metric="trainer/global_step")
     run.define_metric("lr-StableAdamW", step_metric="trainer/global_step")
-    logger = Tracker(run, optimizer_name="StableAdamW" if stage == "pretrain" else "AdamW")
+    logger = Tracker(run, optimizer_name="StableAdamW" if stage == "pretrain" else "AdamW",
+                     upload_checkpoints=settings.get("upload_checkpoints", False))
     logger.summary(
         {
             "run_status": "running",

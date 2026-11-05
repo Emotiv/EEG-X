@@ -63,6 +63,9 @@ In `configs/`, set the local device, output, budget and W&B account.
 Paths resolve beside each YAML. Keep dataset identities, saved splits and training
 settings unchanged. Use the existing budget ledger for an ongoing study.
 Authenticate with `wandb login`, or set `wandb.enabled: false` for local logs.
+Checkpoints stay local by default. W&B still records metrics, system logs and
+confusion matrices. Set `wandb.upload_checkpoints: true` only when cloud model
+artifacts are needed.
 
 For a new study, initialize the budget at the path configured in YAML:
 

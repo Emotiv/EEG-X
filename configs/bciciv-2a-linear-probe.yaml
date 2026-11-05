@@ -22,6 +22,7 @@ early_stopping:
   patience: 5
   min_delta: 0.0
 wandb:
+  upload_checkpoints: false
   enabled: true
   project: eegx
   domain: cross_domain

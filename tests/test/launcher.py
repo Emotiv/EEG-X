@@ -82,6 +82,7 @@ def test_public_study_preserves_paired_data_splits_and_training_seeds():
         dataset = (path.parent / config["dataset"]).resolve()
         task = Path(config["dataset"]).stem
         domain, stage = config["wandb"]["domain"], config["stage"]
+        assert config["wandb"]["upload_checkpoints"] is False
         assert dataset == (ROOT / "data" / f"{task}.h5").resolve()
         assert config["split_seed"] == protocol["datasets"][task.replace("-", "_")]["split_seed"]
         if domain == "cross_domain" and stage != "pretrain":

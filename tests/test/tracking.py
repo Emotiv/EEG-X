@@ -47,6 +47,13 @@ def test_neuralbench_root_metrics_keep_real_optimizer_and_step_values():
     assert run.rows[-1] == {"epoch": 2, "trainer/global_step": 3, "best_epoch": 1}
 
 
+def test_cloud_checkpoint_flag_rejects_string_booleans():
+    from pretrain.tracking import validate_settings
+
+    with pytest.raises(ValueError, match='wandb.upload_checkpoints must be a boolean'):
+        validate_settings({'enabled': True, 'upload_checkpoints': 'false'})
+
+
 def test_resume_uses_same_run_and_seed_recipes_stay_stable_without_preset_groups(
     tmp_path, monkeypatch
 ):
@@ -100,8 +107,9 @@ def test_resume_uses_same_run_and_seed_recipes_stay_stable_without_preset_groups
     assert calls[2]["name"] == "test_pretrain_seed_242"
 
 
+@pytest.mark.parametrize('upload_checkpoints', [False, True])
 def test_embedded_probes_share_pretraining_run_then_finetuning_logs_final_test(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, upload_checkpoints
 ):
     import torch
     import yaml
@@ -142,6 +150,8 @@ def test_embedded_probes_share_pretraining_run_then_finetuning_logs_final_test(
         "wandb": {"enabled": True, "name": "test_embedded_seed_{seed}"},
     }
     path = tmp_path / "run.yaml"
+    if upload_checkpoints:
+        settings['wandb']['upload_checkpoints'] = True
     path.write_text(yaml.safe_dump(settings))
     run_config(path)
     assert len(calls) == 1
@@ -177,8 +187,13 @@ def test_embedded_probes_share_pretraining_run_then_finetuning_logs_final_test(
     assert pretraining.summary["best_epoch"] == pretraining.summary["selected/epoch"]
     assert pretraining.config["n_total_params"] > 0
     assert pretraining.config["n_trainable_params"] == pretraining.config["n_total_params"]
-    assert pretraining.artifacts[0][1]["aliases"] == ["best"]
-    assert "best.pth" in pretraining.artifacts[0][0].manifest.entries
+    assert checkpoint.is_file()
+    if upload_checkpoints:
+        assert pretraining.artifacts[0][1]["aliases"] == ["best"]
+        assert "best.pth" in pretraining.artifacts[0][0].manifest.entries
+    else:
+        assert not pretraining.artifacts
+        assert pretraining.summary['selected/checkpoint_storage'] == 'local_only'
     assert any("linear_probe/val/confusion_matrix" in row for row in pretraining.rows)
     assert any("linear_probe/test/confusion_matrix" in row for row in pretraining.rows)
     subjects = json.loads((tmp_path / "pretrain/split.json").read_text())["subjects"]
@@ -214,8 +229,13 @@ def test_embedded_probes_share_pretraining_run_then_finetuning_logs_final_test(
     assert [row["epoch"] for row in tuning.rows if "train/loss_epoch" in row] == [1, 2]
     assert any("val/bal_acc" in row for row in tuning.rows)
     assert tuning.config["n_total_params"] > 0
-    assert tuning.artifacts[0][1]["aliases"] == ["best"]
-    assert "best.pth" in tuning.artifacts[0][0].manifest.entries
+    assert (tmp_path / 'finetune/training/best.pth').is_file()
+    if upload_checkpoints:
+        assert tuning.artifacts[0][1]["aliases"] == ["best"]
+        assert "best.pth" in tuning.artifacts[0][0].manifest.entries
+    else:
+        assert not tuning.artifacts
+        assert tuning.summary['selected/checkpoint_storage'] == 'local_only'
     final = [row for row in tuning.rows if "test/acc" in row]
     assert len(final) == 1
     assert final[0]["epoch"] == 2

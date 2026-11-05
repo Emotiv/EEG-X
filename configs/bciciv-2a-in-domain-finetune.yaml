@@ -20,6 +20,7 @@ workers: 2
 probe_interval: 0
 diagnostic_test_probes: false
 wandb:
+  upload_checkpoints: false
   enabled: true
   project: eegx
   domain: in_domain
