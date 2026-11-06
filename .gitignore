@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+.uv-cache/
+.runs/
+*.pth
+*.pt
+*.h5
+*.hdf5
+*.h5.working
+*.h5.partial
+wandb/
+*.hdf5.working
+*.hdf5.partial
+.DS_Store
+1861_EEG_X_Toward_Device_Agnos.pdf
+Checkpoints/
+Results_for_Paper/
+
+/.venv
+
+# Local rerun capacity checks and archive receipts.
+.auto/rerun/
+
+# Isolated browser verification tools.
+.auto/browser-venv/

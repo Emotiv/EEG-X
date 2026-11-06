@@ -1,0 +1,30 @@
+{
+  "name": "eegx-fixed-paired-v1",
+  "data_protocol": "eegx-fixed-v1",
+  "training_seeds": [
+    241,
+    242,
+    243
+  ],
+  "in_domain": [
+    "dreamer-arousal",
+    "stew",
+    "tuab",
+    "tuev-binary",
+    "crowdsourced",
+    "bciciv-2a",
+    "kalunga",
+    "physionet-mi"
+  ],
+  "cross_domain": [
+    "crowdsourced",
+    "bciciv-2a",
+    "kalunga",
+    "physionet-mi"
+  ],
+  "source": {
+    "task": "tuab",
+    "seed": 241
+  },
+  "expected_runs": 73
+}
