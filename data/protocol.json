@@ -1,0 +1,83 @@
+{
+  "name": "eegx-fixed-v1",
+  "training_seeds": [
+    241,
+    242,
+    243
+  ],
+  "source_training_seed": 241,
+  "source_models": 1,
+  "expected_runs": 49,
+  "reference_model": {
+    "name": "EEG-X",
+    "model": "eegx_hybrid_v2",
+    "depth": 8,
+    "width": 64,
+    "heads": 8,
+    "project": "quoc-emotiv/eegx-bs256"
+  },
+  "datasets": {
+    "bciciv_2a": {
+      "rule": "fixed_fallback_no_reference_scores",
+      "split_seed": 241,
+      "source_release": "4030bf252e5763c4b6e8e7bf1d2c746cca4b39eaa7643f81aae503cf12b6080c",
+      "source_bank": "4148e7615eba7c1227b4df5670bf4c291839a793a62baa0555af60c20c1448b2"
+    },
+    "crowdsourced": {
+      "rule": "fixed_fallback_no_reference_scores",
+      "split_seed": 241,
+      "source_release": "f49af4512d15b1511094d0601315dd433f53884093f7415a694f9d7f319053ed",
+      "source_bank": "d9f2be21741a5c0518f05f08641f9ea36459765e1ff8006822fcf6263bd45812"
+    },
+    "dreamer_arousal": {
+      "rule": "best_reference_test_bal_acc",
+      "split_seed": 242,
+      "source_release": "199ea460a5ab5a96b27ba12e4d079a3b5f136fa066c89c996e792937b9bbe978",
+      "source_bank": "8e7170fe0dbb91ba44a327cd9c0472060ae008878370e7cec44e09c40a863702",
+      "reference_project": "eegx-bs256-debug",
+      "reference_run": "o74fswps",
+      "reference_test_bal_acc": 0.5515132905950774,
+      "interpretation": "test_informed_exploratory"
+    },
+    "kalunga": {
+      "rule": "fixed_fallback_no_reference_scores",
+      "split_seed": 241,
+      "source_release": "6b9199375981d1150346b31f6af63fda808b25ff05c59807ce51d5c268f82ded",
+      "source_bank": "794d0d77c3856e65e3fcb8ad286d58d46942243755009611695a226b2d2676ec"
+    },
+    "physionet_mi": {
+      "rule": "fixed_fallback_no_reference_scores",
+      "split_seed": 241,
+      "source_release": "67ec1855d4364ee16949cf34d120e3921cd1ce1f41b871702d87f8c72f06c270",
+      "source_bank": "b0370840d950fea554e46eeb6c41595222596b318585e3b4b99cb0059f7c5030"
+    },
+    "stew": {
+      "rule": "best_reference_test_bal_acc",
+      "split_seed": 241,
+      "source_release": "d8c17caceb5cd67c600bddd1276cbd57dd9fcba63e4d4dcfaa1b96675d80170d",
+      "source_bank": "5411f56c55c85b871e7ac1ff327c04aa15ec1e7030d2580c489673642965bb55",
+      "reference_project": "eegx-bs256",
+      "reference_run": "2wpra2j5",
+      "reference_test_bal_acc": 0.7344856661045531,
+      "interpretation": "test_informed_exploratory"
+    },
+    "tuab": {
+      "rule": "official",
+      "split_seed": 241,
+      "train_validation_ratio": [
+        0.8,
+        0.2
+      ],
+      "test": "official_eval"
+    },
+    "tuev_binary": {
+      "rule": "official",
+      "split_seed": 241,
+      "train_validation_ratio": [
+        0.8,
+        0.2
+      ],
+      "test": "official_eval"
+    }
+  }
+}

@@ -1,0 +1,293 @@
+{
+  "projects": {
+    "eegx-bs256": {
+      "total_runs": 23,
+      "domain_counts": {
+        "in_domain": 23
+      },
+      "eligible_scores": [
+        {
+          "run_id": "2wpra2j5",
+          "task": "stew",
+          "domain": "in_domain",
+          "seed": 241,
+          "test/bal_acc": 0.7344856661045531
+        },
+        {
+          "run_id": "f1j0ixck",
+          "task": "stew",
+          "domain": "in_domain",
+          "seed": 242,
+          "test/bal_acc": 0.6596121416526138
+        },
+        {
+          "run_id": "82lv5wjp",
+          "task": "stew",
+          "domain": "in_domain",
+          "seed": 243,
+          "test/bal_acc": 0.7189713322091063
+        },
+        {
+          "run_id": "lmkzxo3n",
+          "task": "stew",
+          "domain": "in_domain",
+          "seed": 244,
+          "test/bal_acc": 0.6779089376053963
+        },
+        {
+          "run_id": "7y1vv1gk",
+          "task": "stew",
+          "domain": "in_domain",
+          "seed": 245,
+          "test/bal_acc": 0.7104553119730186
+        }
+      ]
+    },
+    "eegx-bs256-debug": {
+      "total_runs": 38,
+      "domain_counts": {
+        "in_domain": 37,
+        "cross_domain": 1
+      },
+      "eligible_scores": [
+        {
+          "run_id": "evh7dgqd",
+          "task": "stew",
+          "domain": "in_domain",
+          "seed": 244,
+          "test/bal_acc": 0.6780775716694772
+        },
+        {
+          "run_id": "xf4tbegm",
+          "task": "stew",
+          "domain": "in_domain",
+          "seed": 242,
+          "test/bal_acc": 0.5908937605396289
+        },
+        {
+          "run_id": "xciknfbh",
+          "task": "stew",
+          "domain": "in_domain",
+          "seed": 243,
+          "test/bal_acc": 0.686424957841484
+        },
+        {
+          "run_id": "pr90nfc9",
+          "task": "stew",
+          "domain": "in_domain",
+          "seed": 241,
+          "test/bal_acc": 0.7827993254637438
+        },
+        {
+          "run_id": "93vrhgwe",
+          "task": "stew",
+          "domain": "in_domain",
+          "seed": 245,
+          "test/bal_acc": 0.7147554806070826
+        },
+        {
+          "run_id": "o74fswps",
+          "task": "dreamer_arousal",
+          "domain": "in_domain",
+          "seed": 242,
+          "test/bal_acc": 0.5515132905950774
+        },
+        {
+          "run_id": "xuajt2k0",
+          "task": "dreamer_arousal",
+          "domain": "in_domain",
+          "seed": 245,
+          "test/bal_acc": 0.4989203342540908
+        },
+        {
+          "run_id": "3u2g69lr",
+          "task": "dreamer_arousal",
+          "domain": "in_domain",
+          "seed": 243,
+          "test/bal_acc": 0.4625663301994607
+        },
+        {
+          "run_id": "pbp13m7b",
+          "task": "dreamer_arousal",
+          "domain": "in_domain",
+          "seed": 244,
+          "test/bal_acc": 0.536388495544309
+        },
+        {
+          "run_id": "615scpgs",
+          "task": "dreamer_arousal",
+          "domain": "in_domain",
+          "seed": 241,
+          "test/bal_acc": 0.451316702590549
+        }
+      ]
+    }
+  },
+  "winners": [
+    {
+      "project": "eegx-bs256",
+      "run_id": "2wpra2j5",
+      "seed": 241,
+      "test/bal_acc": 0.7344856661045531,
+      "identity": {
+        "task": "stew",
+        "scope": "subject_holdout",
+        "release_sha256": "d8c17caceb5cd67c600bddd1276cbd57dd9fcba63e4d4dcfaa1b96675d80170d",
+        "split_sha256": "5b5aad026d7a793877a1fcf92cc700271d796e2e2d305af4186fd8741f1a227f"
+      },
+      "bank_fingerprint": "5411f56c55c85b871e7ac1ff327c04aa15ec1e7030d2580c489673642965bb55",
+      "counts": {
+        "train": 39138,
+        "validation": 5930,
+        "test": 11860
+      },
+      "subject_counts": {
+        "train": 33,
+        "validation": 5,
+        "test": 10
+      },
+      "local_checkpoint_md5_b64": "4Ha0P/09SGgoGqk17Ve87Q==",
+      "remote_best_artifact_digest": "4Ha0P/09SGgoGqk17Ve87Q==",
+      "remote_artifact_digest_match": true,
+      "checkpoint_identity_matches_current_h5": true,
+      "checkpoint_dataset_fingerprint_matches_current_h5": true,
+      "local_split_json_release_matches": true,
+      "local_split_json_fingerprint_matches": true,
+      "local_split_json_bank_matches": true
+    },
+    {
+      "project": "eegx-bs256-debug",
+      "run_id": "o74fswps",
+      "seed": 242,
+      "test/bal_acc": 0.5515132905950774,
+      "identity": {
+        "task": "dreamer_arousal",
+        "scope": "subject_holdout",
+        "release_sha256": "199ea460a5ab5a96b27ba12e4d079a3b5f136fa066c89c996e792937b9bbe978",
+        "split_sha256": "71dde8cf7078cf82d8867cd5f84e21cf26907419364d26638a9de011c8461cdb"
+      },
+      "bank_fingerprint": "8e7170fe0dbb91ba44a327cd9c0472060ae008878370e7cec44e09c40a863702",
+      "counts": {
+        "train": 118432,
+        "validation": 14804,
+        "test": 37010
+      },
+      "subject_counts": {
+        "train": 16,
+        "validation": 2,
+        "test": 5
+      },
+      "local_checkpoint_md5_b64": "coern0Ua+Ah2uhOgeR64gw==",
+      "remote_best_artifact_digest": "coern0Ua+Ah2uhOgeR64gw==",
+      "remote_artifact_digest_match": true,
+      "checkpoint_identity_matches_current_h5": true,
+      "checkpoint_dataset_fingerprint_matches_current_h5": true,
+      "local_split_json_release_matches": true,
+      "local_split_json_fingerprint_matches": true,
+      "local_split_json_bank_matches": true
+    }
+  ],
+  "missing_coverage": [
+    "crowdsourced",
+    "bciciv_2a",
+    "kalunga",
+    "physionet_mi"
+  ],
+  "cross_domain_probe_finetune_identity": "Neither project contains cross_domain finetune or standalone linear_probe runs. Debug contains one failed cross_domain TUAB source pretrain run. Live probe/fine-tune split identity cannot be verified.",
+  "tie_rule": "Among exactly equal completed final finetune test/bal_acc scores, prefer smallest split seed then lexicographically smallest run ID.",
+  "official_split_exclusions": [
+    "tuab",
+    "tuev_binary"
+  ],
+  "seed241_candidates": [
+    {
+      "seed": 241,
+      "identity": {
+        "task": "crowdsourced",
+        "scope": "subject_holdout",
+        "release_sha256": "f49af4512d15b1511094d0601315dd433f53884093f7415a694f9d7f319053ed",
+        "split_sha256": "91ec85a04d686e5beb8ddd4c7f7fae8a18a1ceb20a7a3a0804ba0c594b533f84"
+      },
+      "dataset_fingerprint": "5b4b6a9eaf7eb97c87b08fb117ec47dd51e4385a55c6020e3ac3f38b8f16c15c",
+      "bank_fingerprint": "d9f2be21741a5c0518f05f08641f9ea36459765e1ff8006822fcf6263bd45812",
+      "counts": {
+        "train": 8521,
+        "validation": 944,
+        "test": 2840
+      },
+      "subject_counts": {
+        "train": 9,
+        "validation": 1,
+        "test": 3
+      },
+      "bank_verified": true
+    },
+    {
+      "seed": 241,
+      "identity": {
+        "task": "bciciv_2a",
+        "scope": "subject_holdout",
+        "release_sha256": "4030bf252e5763c4b6e8e7bf1d2c746cca4b39eaa7643f81aae503cf12b6080c",
+        "split_sha256": "1a43a445ee0df358e647e2ea27b3d65cd14fa125c27737197d450f452ed9d895"
+      },
+      "dataset_fingerprint": "08c382e230b9d4974b74208ba63aec5819405376e750a90709fabcb378d8f061",
+      "bank_fingerprint": "4148e7615eba7c1227b4df5670bf4c291839a793a62baa0555af60c20c1448b2",
+      "counts": {
+        "train": 3456,
+        "validation": 576,
+        "test": 1152
+      },
+      "subject_counts": {
+        "train": 6,
+        "validation": 1,
+        "test": 2
+      },
+      "bank_verified": true
+    },
+    {
+      "seed": 241,
+      "identity": {
+        "task": "kalunga",
+        "scope": "subject_holdout",
+        "release_sha256": "6b9199375981d1150346b31f6af63fda808b25ff05c59807ce51d5c268f82ded",
+        "split_sha256": "e7e216c9d39678cc5d19e9c4e8626975ca73bfa4223b80a6a4958bfdbdccebee"
+      },
+      "dataset_fingerprint": "f02be9dd790a95df9ca52e34f13217fac20ae9bd9ca2918cc6791479a49e0335",
+      "bank_fingerprint": "794d0d77c3856e65e3fcb8ad286d58d46942243755009611695a226b2d2676ec",
+      "counts": {
+        "train": 704,
+        "validation": 128,
+        "test": 128
+      },
+      "subject_counts": {
+        "train": 9,
+        "validation": 1,
+        "test": 2
+      },
+      "bank_verified": true
+    },
+    {
+      "seed": 241,
+      "identity": {
+        "task": "physionet_mi",
+        "scope": "subject_holdout",
+        "release_sha256": "67ec1855d4364ee16949cf34d120e3921cd1ce1f41b871702d87f8c72f06c270",
+        "split_sha256": "29519fd86ff864d64f10cf9c56c1e64646b266d0f62fd57affec5abbc2712cce"
+      },
+      "dataset_fingerprint": "54fbb7f6e3ae88cbe54319a6ea6ecc2ba56a2017218b71b5484042a6f3efeec2",
+      "bank_fingerprint": "b0370840d950fea554e46eeb6c41595222596b318585e3b4b99cb0059f7c5030",
+      "counts": {
+        "train": 13236,
+        "validation": 1914,
+        "test": 3872
+      },
+      "subject_counts": {
+        "train": 76,
+        "validation": 11,
+        "test": 22
+      },
+      "bank_verified": true
+    }
+  ],
+  "ties_in_selected_candidates": false
+}
