@@ -1,9 +1,97 @@
-# EEG-X
+<h1 align="center">EEG-X: Toward Device-Agnostic and Noise-Robust Foundation Models for EEG</h1>
 
-(Test)
+<p align="center">
+  <b>Navid Mohammadi Foumani</b><sup>1</sup> &nbsp;·&nbsp;
+  <b>Soheila Ghane</b><sup>2*</sup> &nbsp;·&nbsp;
+  <b>Nam Nguyen</b><sup>1</sup> &nbsp;·&nbsp;
+  <b>Mahsa Salehi</b><sup>3</sup> &nbsp;·&nbsp;
+  <b>Geoffrey I. Webb</b><sup>3</sup> &nbsp;·&nbsp;
+  <b>Geoffrey Mackellar</b><sup>1</sup>
+</p>
 
-PyTorch implementation of EEG-X: Device-Agnostic and Noise-Robust Foundation Model for EEG.
+<p align="center">
+  <sup>1</sup>Emotiv Research &nbsp;&nbsp; <sup>2</sup>Google &nbsp;&nbsp; <sup>3</sup>Monash University<br>
+  <sup>*</sup>Work done while at Emotiv Research
+</p>
+
+<p align="center">
+  <a href="https://arxiv.org/abs/2511.08861"><img alt="Paper" src="https://img.shields.io/badge/Paper-arXiv%202511.08861-b31b1b"></a>
+  <a href="https://neurips.cc/virtual/2026/loc/sydney/poster/152276"><img alt="NeurIPS 2026" src="https://img.shields.io/badge/NeurIPS-2026%20Poster-4b44ce"></a>
+  <a href="https://recorder-v3.slideslive.com/#/share?share=115520&s=5ed87d84-4130-4083-adfc-18e38c0920f7"><img alt="Short video" src="https://img.shields.io/badge/Short-Video-0a7d5a"></a>
+</p>
+
+PyTorch implementation of **EEG-X**, accepted at **NeurIPS 2026**.
 See [the model](docs/model.md) for architecture, loss and training settings.
+
+**Links:** [Paper (arXiv)](https://arxiv.org/abs/2511.08861) · [NeurIPS 2026 poster page](https://neurips.cc/virtual/2026/loc/sydney/poster/152276) · [Short video](https://recorder-v3.slideslive.com/#/share?share=115520&s=5ed87d84-4130-4083-adfc-18e38c0920f7)
+
+<p align="center">
+  <img src="Figs/EEG-X_Fig.png" width="100%" alt="EEG-X overview">
+</p>
+
+## What does this paper present?
+
+Foundation models for EEG are held back by two problems:
+
+1. **Device variability.** Datasets differ in recording devices, number of channels and electrode layouts, so models trained on one headset rarely transfer to another.
+2. **Low signal-to-noise ratio.** Neural activity is often buried under artifacts and non-brain sources, and reconstructing raw EEG teaches a model to reproduce that noise.
+
+EEG-X is a masked-autoencoder foundation model for EEG that addresses both with three ideas.
+
+### 1. Location-based channel embedding (device-agnostic)
+
+Instead of learning one embedding per electrode name, EEG-X embeds each electrode from its **scalp coordinates**. Electrodes that are close on the scalp get similar embeddings, and any headset (Emotiv EPOC with 14 channels, BCI IV 2a with 22, an 8-channel SSVEP cap, and so on) maps onto the same coordinate space. A new device therefore needs no new embeddings.
+
+<p align="center">
+  <img src="Figs/channels.gif" width="70%" alt="Location-based channel embedding">
+</p>
+
+<p align="center"><a href="Figs/channels.mp4">Watch as MP4</a></p>
+
+### 2. Noise-aware masking and reconstruction
+
+Previous masked-reconstruction methods must rebuild the raw EEG, artifacts included. EEG-X keeps the raw, masked EEG as the **input** but reconstructs an **artifact-cleaned** version of the signal (artifact removal such as rASR), so the model is rewarded for neural activity only.
+
+<p align="center">
+  <img src="Figs/masking.gif" width="90%" alt="Noise-aware masking and reconstruction">
+</p>
+
+<p align="center"><a href="Figs/masking.mp4">Watch as MP4</a></p>
+
+### 3. DiCT: Dictionary-based Convolution Transformation
+
+Comparing a reconstruction with its target point by point is sensitive to small shifts and amplitude changes. **DiCT** compares signals in a structured feature space instead:
+
+1. A fixed, randomly generated group of dilated convolution kernels is applied to the signal, and each kernel produces its own response.
+2. At every time step, the kernels in a group **compete** and the strongest response wins.
+3. Counting how often each kernel wins gives a compact representation of the signal's shape and frequency content.
+
+The loss is the MSE between the DiCT representations of the cleaned target and the reconstruction. DiCT has no learnable parameters.
+
+<p align="center">
+  <img src="Figs/dict.gif" width="90%" alt="DiCT: kernels compete at every time step">
+</p>
+
+<p align="center"><a href="Figs/dict.mp4">Watch as MP4</a></p>
+
+### Evaluation
+
+EEG-X is evaluated on datasets recorded with different EEG devices, both **in-domain** (pre-training and downstream data come from the same dataset) and **cross-domain** (pre-training on TUAB, downstream on datasets with different electrode layouts and recording configurations). See the paper for the full results.
+
+## Citation
+
+```bibtex
+@article{foumani2025eegx,
+  title   = {EEG-X: Toward Device-Agnostic and Noise-Robust Foundation Models for EEG},
+  author  = {Mohammadi Foumani, Navid and Ghane, Soheila and Nguyen, Nam and Salehi, Mahsa and Webb, Geoffrey I. and Mackellar, Geoffrey},
+  journal = {arXiv preprint arXiv:2511.08861},
+  year    = {2025}
+}
+```
+
+## License and use
+
+The code and pretrained models are released for **research and academic purposes only**. Commercial or business use requires prior authorization from the authors or the relevant rights holders. Datasets remain subject to their own terms and conditions.
 
 ## Setup
 
