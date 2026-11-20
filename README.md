@@ -1,12 +1,12 @@
 <h1 align="center">EEG-X: Toward Device-Agnostic and Noise-Robust Foundation Models for EEG</h1>
 
 <p align="center">
-  <b>Navid Mohammadi Foumani</b><sup>1</sup> &nbsp;·&nbsp;
-  <b>Soheila Ghane</b><sup>2*</sup> &nbsp;·&nbsp;
+  <a href="https://scholar.google.com.au/citations?user=Ax62P1MAAAAJ&hl=en"><b>Navid Fuman</b></a><sup>1</sup> &nbsp;·&nbsp;
+  <a href="https://www.linkedin.com/in/soheila-ghane/"><b>Soheila Ghane</b></a><sup>2*</sup> &nbsp;·&nbsp;
   <b>Nam Nguyen</b><sup>1</sup> &nbsp;·&nbsp;
-  <b>Mahsa Salehi</b><sup>3</sup> &nbsp;·&nbsp;
-  <b>Geoffrey I. Webb</b><sup>3</sup> &nbsp;·&nbsp;
-  <b>Geoffrey Mackellar</b><sup>1</sup>
+  <a href="https://research.monash.edu/en/persons/mahsa-salehi"><b>Mahsa Salehi</b></a><sup>3</sup> &nbsp;·&nbsp;
+  <a href="https://giwebb.com/"><b>Geoffrey I. Webb</b></a><sup>3</sup> &nbsp;·&nbsp;
+  <a href="https://www.linkedin.com/in/geoffmackellar/"><b>Geoffrey Mackellar</b></a><sup>1</sup>
 </p>
 
 <p align="center">
