@@ -1,5 +1,7 @@
 # EEG-X
 
+(Test)
+
 PyTorch implementation of EEG-X: Device-Agnostic and Noise-Robust Foundation Model for EEG.
 See [the model](docs/model.md) for architecture, loss and training settings.
 
@@ -20,9 +22,9 @@ The HDF5 files are distributed separately and excluded from Git.
 Each file contains signals, labels, channel identities, preprocessing,
 subject provenance and the saved train/validation/test indices.
 
-| Dataset files |
-|---|
-| `dreamer-arousal.h5`, `stew.h5`, `tuab.h5`, `tuev-binary.h5` |
+| Dataset files                                                              |
+| -------------------------------------------------------------------------- |
+| `dreamer-arousal.h5`, `stew.h5`, `tuab.h5`, `tuev-binary.h5`       |
 | `crowdsourced.h5`, `bciciv-2a.h5`, `kalunga.h5`, `physionet-mi.h5` |
 
 Both evaluation domains use the same target file and saved subject split.
@@ -92,6 +94,7 @@ For a single stage:
 ```sh
 uv run --locked --no-active python Main.py --config configs/stew.yaml
 ```
+
 In-domain fine-tuning uses each seed's selected pretraining checkpoint.
 Cross-domain stages share the selected TUAB source checkpoint.
 
@@ -117,13 +120,13 @@ GPU when the installed GPUs match. Its inference timings use resident inputs
 under the current shared GPU load, so they are provisional rather than isolated
 speed comparisons.
 
-| Study rule | Value |
-|---|---|
-| Training seeds | 241, 242, 243; same subject split for every seed |
-| Paired study | 73 runs, as defined in `data/study.json` |
-| TUAB and TUEV | Official test; official training subjects split 80/20 for train/validation |
+| Study rule             | Value                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| Training seeds         | 241, 242, 243; same subject split for every seed                               |
+| Paired study           | 73 runs, as defined in `data/study.json`                                     |
+| TUAB and TUEV          | Official test; official training subjects split 80/20 for train/validation     |
 | STEW / DREAMER arousal | Saved split 241 / 242; historical test-informed selection, exploratory results |
-| Other targets | Saved split 241, fixed without a target score search |
+| Other targets          | Saved split 241, fixed without a target score search                           |
 
 Pretraining selects minimum validation raw MSE. Downstream stages select maximum
 validation balanced accuracy, then evaluate test once. Embedded test probes are diagnostic.
